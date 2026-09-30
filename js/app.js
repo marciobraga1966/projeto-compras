@@ -73,11 +73,28 @@
   });
 
   window.addEventListener('hashchange', route);
+
+  const CLOUD_TXT = {
+    desligado: 'Dados só neste computador',
+    sincronizando: 'Sincronizando…',
+    ok: 'Nuvem: sincronizado',
+    erro: 'Nuvem: sem conexão',
+    login: 'Nuvem: entre novamente'
+  };
+  root.Cloud.onStatus(st => {
+    const el = UI.$('#cloud-status');
+    if (!el) return;
+    el.dataset.estado = st.estado;
+    const hora = st.estado === 'ok' ? ' às ' + st.quando.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+    el.querySelector('span').textContent = CLOUD_TXT[st.estado] + hora;
+    el.title = st.msg || '';
+  });
   S.onChange(() => root.App.refreshNav());
 
   (async function start() {
     const had = await S.init();
-    if (!had) root.Seed.load();
+    if (!had && !root.Cloud.configured()) root.Seed.load();
     route();
+    root.Cloud.iniciar();
   })();
 })(window);

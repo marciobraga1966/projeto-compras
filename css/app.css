@@ -132,7 +132,13 @@ h3 { font-size: .95rem; font-weight: 700; }
   background: rgba(255, 255, 255, .16); border-radius: 10px; padding: 1px 6px;
 }
 .nav a.on .cnt { background: rgba(0, 0, 0, .12); }
-.side .foot { margin-top: auto; padding: 12px 18px 16px; font-size: .74rem; color: rgba(255, 255, 255, .6); }
+.side .foot { margin-top: auto; padding: 12px 18px 16px; font-size: .78rem; }
+.cloud { display: flex; align-items: center; gap: 8px; color: rgba(255, 255, 255, .8); text-decoration: none; }
+.cloud:hover span { text-decoration: underline; }
+.cloud i { width: 9px; height: 9px; border-radius: 50%; background: #9ea2c9; flex: none; }
+.cloud[data-estado="ok"] i { background: #6fd69c; }
+.cloud[data-estado="sincronizando"] i { background: var(--sun); }
+.cloud[data-estado="erro"] i, .cloud[data-estado="login"] i { background: #ff8f8f; }
 
 .main { min-width: 0; display: flex; flex-direction: column; }
 .top {

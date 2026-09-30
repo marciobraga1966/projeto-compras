@@ -111,6 +111,14 @@
         try { localStorage.setItem(DB_NAME, JSON.stringify(db)); } catch (e) { console.warn('Falha ao salvar', e); }
       }
     }, 150);
+    if (root.Cloud) root.Cloud.schedulePush();
+    listeners.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
+  };
+
+  /* Salva localmente sem disparar envio para a nuvem (usado ao receber dados da nuvem) */
+  S.saveLocal = function () {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => idbPut(db), 150);
     listeners.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
   };
 
@@ -124,10 +132,14 @@
 
   S.find = function (col, id) { return (db[col] || []).find(x => x.id === id) || null; };
 
+  const NUM_COL = { SC: 'solicitacoes', CT: 'cotacoes', PC: 'pedidos' };
   S.nextNumber = function (prefix) {
     const year = new Date().getFullYear();
     const k = prefix + '-' + year;
-    db.seq[k] = (db.seq[k] || 0) + 1;
+    // considera também números criados em outros computadores (base na nuvem)
+    const re = new RegExp('^' + prefix + '-' + year + '-(\\d+)$');
+    const maxUsado = (db[NUM_COL[prefix]] || []).reduce((m, x) => { const r = re.exec(x.numero || ''); return r ? Math.max(m, Number(r[1])) : m; }, 0);
+    db.seq[k] = Math.max(db.seq[k] || 0, maxUsado) + 1;
     return prefix + '-' + year + '-' + U.pad(db.seq[k], 4);
   };
 
@@ -170,6 +182,11 @@
   S.replaceAll = function (data) {
     db = migrate(data);
     S.save();
+  };
+
+  /* Zera a cópia local sem apagar nada na nuvem (antes de baixar a base da nuvem) */
+  S.replaceAllLocal = function () {
+    db = emptyDb();
   };
 
   S.reset = function () {

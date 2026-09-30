@@ -2,7 +2,7 @@
 
 Sistema web de **solicitação, cotação, mapa comparativo de preços e pedidos de compra** da Brasmic Mineração Areia & Brita.
 
-Funciona direto no navegador, sem instalação nem servidor de banco de dados. Os dados ficam salvos no próprio navegador (IndexedDB), e dá para baixar e restaurar cópias de segurança em **Configurações**.
+Funciona direto no navegador, sem instalação. Pode trabalhar sozinho (dados salvos no navegador) ou ligado ao **banco de dados na nuvem** (Supabase/PostgreSQL), com login por usuário, para que requisitantes e compradores usem a mesma base em qualquer computador ou celular. Passo a passo: [docs/BANCO-NA-NUVEM.md](docs/BANCO-NA-NUVEM.md).
 
 ## Como usar
 
@@ -72,6 +72,8 @@ assets/               logotipo e ícone
 js/util.js            formatação, números em pt-BR, similaridade de textos, CNPJ
 js/parser.js          interpretação de ditado, OCR e propostas
 js/store.js           armazenamento no navegador
+js/cloud.js           login e sincronização com o banco na nuvem (Supabase)
+supabase/schema.sql   script de criação do banco, segurança e histórico
 js/domain.js          regras do processo (cotação, mapa, pedidos, estoque)
 js/capture.js         voz, OCR, PDF e planilhas
 js/docs.js            pedido de cotação, pedido de compra, mapa (impressão/Excel)
@@ -82,6 +84,7 @@ tests/                testes automatizados dos interpretadores (npm test)
 Bibliotecas carregadas sob demanda pela internet: Tesseract.js (OCR), PDF.js (leitura de PDF) e SheetJS (Excel).
 
 ## Limitações atuais
-- Os dados ficam no navegador de cada computador. Para vários usuários compartilharem a mesma base em tempo real, o próximo passo é ligar o sistema a um banco na nuvem (ex.: Supabase ou Firebase).
+- Sem o banco na nuvem configurado, os dados ficam só no navegador de cada computador.
+- Com o banco na nuvem, alterações de outros usuários chegam em até 15 segundos. Se duas pessoas alterarem o mesmo registro ao mesmo tempo, vale a última gravação (a anterior fica no histórico do banco).
 - O reconhecimento de voz depende do Chrome/Edge e de internet. No celular, o microfone do teclado também funciona no campo de texto do ditado.
 - A leitura de fotos e de manuscritos depende da qualidade da imagem. Por isso todo item lido passa pela tela de conferência.
