@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Brasmic Compras</title>
+  <meta name="description" content="Solicitações, cotações, mapa comparativo de preços e pedidos de compra — Brasmic Mineração Areia & Brita">
+  <meta name="theme-color" content="#2e3192">
+  <link rel="icon" href="assets/icone.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..800&family=Source+Sans+3:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <aside class="side" id="side">
+      <div class="logo"><img src="assets/logo-brasmic.svg" alt="Brasmic Mineração Areia &amp; Brita"></div>
+      <div class="sys">Gestão de Compras</div>
+      <nav class="nav" id="nav"></nav>
+      <div class="foot">Dados salvos neste navegador.<br>Faça cópias de segurança em Configurações.</div>
+    </aside>
+    <div class="main">
+      <header class="top">
+        <button class="btn icon menu-btn" id="menu-btn" aria-label="Abrir menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <div class="ttl"><div class="crumb" id="crumb"></div><h1 id="title">Carregando…</h1></div>
+        <div class="acts" id="top-acts"></div>
+      </header>
+      <main class="view" id="view"></main>
+    </div>
+  </div>
+  <div id="modals"></div>
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <div id="print-area"></div>
+
+  <script src="js/util.js"></script>
+  <script src="js/parser.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/domain.js"></script>
+  <script src="js/capture.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/seed.js"></script>
+  <script src="js/docs.js"></script>
+  <script src="js/views/dashboard.js"></script>
+  <script src="js/views/solicitacoes.js"></script>
+  <script src="js/views/cotacoes.js"></script>
+  <script src="js/views/pedidos.js"></script>
+  <script src="js/views/estoque.js"></script>
+  <script src="js/views/cadastros.js"></script>
+  <script src="js/views/config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
