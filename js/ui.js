@@ -52,7 +52,7 @@
 
   UI.render = function (html) {
     const v = UI.$('#view');
-    v.innerHTML = (root.S.config().exemplo ? '<div class="demo-banner">' + UI.icon('star') + ' Você está vendo dados de exemplo para conhecer o sistema. <button class="btn sm" data-go="#/config">Limpar exemplos e começar</button></div>' : '') + html;
+    v.innerHTML = (root.S.config().exemplo ? '<div class="demo-banner">' + UI.icon('star') + ' Prévia com dados de demonstração.' + (root.Auth && root.Auth.perm.admin ? ' <button class="btn sm" data-go="#/config">Limpar exemplos e começar</button>' : '') + '</div>' : '') + html;
     return v;
   };
 
@@ -62,7 +62,10 @@
   };
 
   UI.destinoTag = function (d) {
-    return d === 'estoque' ? '<span class="tag est">Estoque</span>' : '<span class="tag apl">Aplicação direta</span>';
+    if (d === 'estoque') return '<span class="tag est">Estoque</span>';
+    if (d === 'aplicacao') return '<span class="tag apl">Aplicação direta</span>';
+    if (d === 'ambas') return '<span class="tag amb">Ambas</span>';
+    return '<span class="tag urg">Não informado</span>';
   };
 
   UI.options = function (list, selected, labelFn, placeholder) {

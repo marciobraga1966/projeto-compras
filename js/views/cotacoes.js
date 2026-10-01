@@ -1,7 +1,7 @@
 /* Cotações: itens, fornecedores convidados, propostas (digitadas ou importadas) e mapa comparativo */
 (function (root) {
   'use strict';
-  const { U, S, D, UI, C, P, Docs } = root;
+  const { U, S, D, UI, C, P, Docs, Auth } = root;
   const V = root.V = root.V || {};
 
   let filtroStatus = 'ativas';
@@ -37,11 +37,56 @@
         buttons: [{ label: 'Cancelar' }, { label: 'Criar cotação', cls: 'pri', action: m => {
           const ids = UI.$$('input[type=checkbox]:checked', m.el).map(x => x.value);
           if (!ids.length) { UI.toast('Selecione ao menos uma solicitação', 'bad'); return false; }
-          const c = D.criarCotacao(ids, UI.$('#ns-comp', m.el).value);
-          location.hash = '#/cotacoes/' + c.id + '/fornecedores';
+          const comp = UI.$('#ns-comp', m.el).value;
+          setTimeout(() => V.iniciarCotacao(ids, comp), 0);
         } }]
       });
     };
+  };
+
+  /* Envio para cotação com verificação de estoque:
+     itens de aplicação direta com saldo podem ser baixados do estoque e entregues ao solicitante;
+     o comprador decide, item a item, se mantém a cotação (para repor o estoque) */
+  V.iniciarCotacao = function (solIds, compradorId) {
+    const comEstoque = D.itensComEstoque(solIds);
+    const finalizar = (plano) => {
+      const cot = D.criarCotacao(solIds, compradorId, plano);
+      if (root.Cloud.ativo()) root.Cloud.gravarAgora().catch(err => UI.toast('Falha ao gravar no banco: ' + err.message, 'bad'));
+      if (!cot) { UI.toast('Todos os itens foram atendidos pelo estoque. O solicitante deve confirmar o recebimento.', 'ok'); location.hash = '#/recebimentos'; return; }
+      UI.toast('Cotação ' + cot.numero + ' criada', 'ok');
+      location.hash = '#/cotacoes/' + cot.id + '/fornecedores';
+    };
+    if (!comEstoque.length) return finalizar({});
+    UI.modal({
+      title: 'Há saldo em estoque para itens desta solicitação', size: 'wide',
+      body: '<p style="margin:0">Os itens abaixo são de <b>aplicação direta</b> e têm saldo no almoxarifado. Informe quanto retirar do estoque: a quantidade é baixada, lançada no custo do equipamento/despesa e entregue ao solicitante, que confirma o recebimento no portal. O restante segue para cotação.</p>' +
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Solicitação</th><th>Item</th><th class="n">Pendente</th><th class="n">Saldo</th><th class="n" style="width:120px">Retirar do estoque</th><th>Manter na cotação?</th></tr></thead><tbody>' +
+        comEstoque.map((x, i) => '<tr data-i="' + i + '"><td>' + U.esc(x.sol.numero) + '<br><span class="small muted">' + U.esc(D.apropriacao(x.sol)) + '</span></td><td>' + U.esc(x.item.descricao) + '</td>' +
+          '<td class="n">' + U.num(x.pendente) + ' ' + U.esc(x.item.unidade) + '</td><td class="n">' + U.num(x.saldo) + '</td>' +
+          '<td><input class="n" data-ret value="' + U.num(x.sugerido) + '" aria-label="Quantidade a retirar"></td>' +
+          '<td><label class="row small"><input type="checkbox" data-manter> Sim, cotar a reposição do estoque</label></td></tr>').join('') +
+        '</tbody></table></div>' +
+        '<p class="small muted" style="margin:0">"Manter na cotação" inclui na cotação a mesma quantidade retirada, com destino estoque, para repor o almoxarifado. Sem marcar, o item retirado não é cotado.</p>',
+      buttons: [
+        { label: 'Cancelar' },
+        { label: 'Não usar o estoque — cotar tudo', action: () => finalizar({}) },
+        { label: 'Baixar do estoque e continuar', cls: 'pri', icon: 'box', action: m => {
+          const retiradas = [], plano = {};
+          let erro = '';
+          UI.$$('tr[data-i]', m.el).forEach(tr => {
+            const x = comEstoque[Number(tr.dataset.i)];
+            const q = U.parseNum(tr.querySelector('[data-ret]').value);
+            if (q < 0 || q > Math.min(x.saldo, x.pendente) + 1e-9) erro = 'Quantidade a retirar de "' + x.item.descricao + '" deve ser entre 0 e ' + U.num(Math.min(x.saldo, x.pendente)) + '.';
+            if (q > 0) retiradas.push({ solId: x.sol.id, itemId: x.item.id, qtd: q });
+            plano[x.item.id] = { retirado: q, manter: tr.querySelector('[data-manter]').checked };
+          });
+          if (erro) { UI.toast(erro, 'bad'); return false; }
+          const ents = D.atenderPeloEstoque(retiradas);
+          if (ents.length) UI.toast(ents.length + ' entrega(s) pelo estoque registradas: ' + ents.map(e => e.numero).join(', '), 'ok');
+          finalizar(plano);
+        } }
+      ]
+    });
   };
 
   /* ---------- Detalhe ---------- */
@@ -89,7 +134,7 @@
         const s = S.find('solicitacoes', it.solicitacaoId);
         return '<tr data-i="' + i + '"><td>' + (i + 1) + '</td><td>' + U.esc(p ? p.codigo : '') + '</td><td>' + U.esc(it.descricao) + '</td>' +
           '<td class="n" style="width:110px">' + (fechada ? U.num(it.qtd) : '<input class="n" data-f="qtd" value="' + U.num(it.qtd) + '" aria-label="Quantidade">') + '</td><td>' + U.esc(it.unidade) + '</td>' +
-          '<td>' + (fechada ? U.esc(it.marca) : '<input data-f="marca" value="' + U.esc(it.marca) + '" aria-label="Marca">') + '</td><td>' + UI.destinoTag(it.destino) + '</td><td>' + (s ? s.numero : '') + '</td>' +
+          '<td>' + (fechada ? U.esc(it.marca) : '<input data-f="marca" value="' + U.esc(it.marca) + '" aria-label="Marca">') + '</td><td>' + (fechada ? UI.destinoTag(it.destino) : '<select data-f="destino" aria-label="Destino do item"><option value="estoque"' + (it.destino === 'estoque' ? ' selected' : '') + '>Estoque</option><option value="aplicacao"' + (it.destino === 'aplicacao' ? ' selected' : '') + '>Aplicação direta</option></select>') + '</td><td>' + (s ? s.numero : '') + '</td>' +
           '<td class="n">' + (p && D.ultimoPreco(p) ? U.money(D.ultimoPreco(p)) : '—') + '</td><td class="n">' + (mh ? U.money(mh.preco) + '<br><span class="small muted">' + U.esc(D.fornecedorNome(mh.fornecedorId)) + '</span>' : '—') + '</td>' +
           '<td class="act">' + (fechada ? '' : '<button class="btn icon ghost danger" data-del="' + i + '" title="Retirar item da cotação" aria-label="Retirar item">' + UI.icon('trash') + '</button>') + '</td></tr>';
       }).join('') + '</tbody></table></div></div></div>' +
@@ -98,6 +143,22 @@
       const tr = e.target.closest('tr[data-i]');
       if (!tr) return;
       const it = cot.itens[Number(tr.dataset.i)];
+      if (e.target.dataset.f === 'destino') {
+        const sel = e.target, novo = sel.value;
+        UI.confirm('Mudar o destino de "' + it.descricao + '" de "' + D.DESTINO[it.destino] + '" para "' + D.DESTINO[novo] + '"? A solicitação de origem também será atualizada.', 'Mudar destino', false).then(ok => {
+          if (!ok) { sel.value = it.destino; return; }
+          it.destino = novo;
+          const sol = S.find('solicitacoes', it.solicitacaoId);
+          const si = sol && sol.itens.find(x => x.id === it.solItemId);
+          if (si) {
+            si.destino = novo;
+            sol.destino = root.R.destinoDosItens(sol.itens) || sol.destino;
+            sol.historico.push({ data: U.nowIso(), evento: 'Destino de "' + it.descricao + '" alterado para ' + D.DESTINO[novo] + ' na cotação ' + cot.numero });
+          }
+          S.save();
+        });
+        return;
+      }
       if (e.target.dataset.f === 'qtd') it.qtd = U.parseNum(e.target.value);
       else it[e.target.dataset.f] = e.target.value;
       S.save();
@@ -134,7 +195,7 @@
     if (!fechada) {
       h += '<div class="card"><div class="hd"><h2>Convidar fornecedores</h2></div><div class="bd stack"><div class="row"><select id="add-f" style="max-width:420px">' +
         UI.options(fora, '', f => (f.fantasia || f.razao) + (f.categorias ? ' — ' + f.categorias : ''), 'Escolha um fornecedor…') + '</select><button class="btn" id="add-f-btn">' + UI.icon('plus') + 'Adicionar</button>' +
-        '<button class="btn ghost" id="new-f">' + UI.icon('truck') + 'Cadastrar novo</button></div>' +
+        (Auth.perm.editarProdutosFornecedores ? '<button class="btn ghost" id="new-f">' + UI.icon('truck') + 'Cadastrar novo</button>' : '') + '</div>' +
         (sugest.length ? '<div class="row small"><span class="muted">Sugeridos pela categoria dos itens:</span>' + sugest.map(f => '<button class="btn sm" data-sug="' + f.id + '">' + UI.icon('plus') + U.esc(f.fantasia || f.razao) + '</button>').join('') + '</div>' : '') +
         '</div></div>';
     }
@@ -255,7 +316,8 @@
     const p = prop ? JSON.parse(JSON.stringify(prop)) : D.novaProposta(fornecedorId);
     const jaTem = new Set(cot.propostas.filter(x => x.id !== p.id).map(x => x.fornecedorId));
     const forns = S.all('fornecedores').filter(f => f.ativo !== false || f.id === p.fornecedorId);
-    const novoForn = capturado && capturado.novoFornecedor;
+    const novoForn = capturado && capturado.novoFornecedor && Auth.perm.editarProdutosFornecedores ? capturado.novoFornecedor : null;
+    if (capturado && capturado.novoFornecedor && !novoForn) capturado.aviso = (capturado.aviso || '') + ' O fornecedor do documento não está cadastrado e você não tem permissão para cadastrar fornecedores: escolha um da lista ou peça a um comprador autorizado.';
     const body = () => {
       let h = '';
       if (capturado && capturado.aviso) h += '<div class="note">' + capturado.aviso + '</div>';

@@ -143,21 +143,22 @@
     const comp = S.find('compradores', ped.compradorId);
     const cot = S.find('cotacoes', ped.cotacaoId);
     let h = '<div class="doc">' + head('Pedido de Compra', ped.numero, ped.data);
+    if (ped.status === 'aguardando_aprovacao' || ped.status === 'reprovado') h += '<div class="stamp">' + (ped.status === 'reprovado' ? 'REPROVADO — NÃO ENVIAR' : 'AGUARDANDO APROVAÇÃO — NÃO ENVIAR') + '</div>';
     h += '<div class="blk">' + fornBox(f) + '<div class="box"><h3>Entrega e pagamento</h3>Local: ' + U.esc(ped.localEntrega || '—') +
       '<br>Prazo: ' + (ped.prazoEntregaDias !== '' && ped.prazoEntregaDias !== undefined ? U.esc(ped.prazoEntregaDias) + ' dias (previsão ' + U.date(ped.previsaoEntrega) + ')' : '—') +
       '<br>Pagamento: ' + U.esc(ped.condPagamento || '—') + '<br>Frete: ' + U.esc(ped.freteTipo || '—') +
       (cot ? '<br>Referência: cotação ' + U.esc(cot.numero) : '') + '</div></div>';
-    h += '<table><thead><tr><th>Item</th><th>Código</th><th>Descrição</th><th>Marca</th><th class="n">Qtd</th><th>Unid</th><th class="n">Preço unit.</th><th class="n">Total</th></tr></thead><tbody>';
+    h += '<table><thead><tr><th>Item</th><th>Código</th><th>Descrição</th><th>Destino</th><th>Marca</th><th class="n">Qtd</th><th>Unid</th><th class="n">Preço unit.</th><th class="n">Total</th></tr></thead><tbody>';
     ped.itens.forEach((it, i) => {
       const p = S.find('produtos', it.produtoId);
-      h += '<tr><td>' + (i + 1) + '</td><td>' + U.esc(p ? p.codigo : '') + '</td><td>' + U.esc(it.descricao) + '</td><td>' + U.esc(it.marca) + '</td><td class="n">' + U.num(it.qtd) + '</td><td>' + U.esc(it.unidade) + '</td><td class="n">' + U.money(it.unitLiquido) + '</td><td class="n">' + U.money(it.total) + '</td></tr>';
+      h += '<tr><td>' + (i + 1) + '</td><td>' + U.esc(p ? p.codigo : '') + '</td><td>' + U.esc(it.descricao) + '</td><td>' + (it.destino === 'estoque' ? 'Estoque' : 'Aplicação direta<br><small>' + U.esc(D.apropriacao(it)) + '</small>') + '</td><td>' + U.esc(it.marca) + '</td><td class="n">' + U.num(it.qtd) + '</td><td>' + U.esc(it.unidade) + '</td><td class="n">' + U.money(it.unitLiquido) + '</td><td class="n">' + U.money(it.total) + '</td></tr>';
     });
-    h += '</tbody><tfoot><tr><td colspan="7" class="n">Subtotal</td><td class="n">' + U.money(ped.subtotal) + '</td></tr>' +
-      (ped.frete ? '<tr><td colspan="7" class="n">Frete</td><td class="n">' + U.money(ped.frete) + '</td></tr>' : '') +
-      '<tr><td colspan="7" class="n">Total do pedido</td><td class="n">' + U.money(ped.total) + '</td></tr></tfoot></table>';
+    h += '</tbody><tfoot><tr><td colspan="8" class="n">Subtotal</td><td class="n">' + U.money(ped.subtotal) + '</td></tr>' +
+      (ped.frete ? '<tr><td colspan="8" class="n">Frete</td><td class="n">' + U.money(ped.frete) + '</td></tr>' : '') +
+      '<tr><td colspan="8" class="n">Total do pedido</td><td class="n">' + U.money(ped.total) + '</td></tr></tfoot></table>';
     if (ped.obs) h += '<div class="box" style="margin-top:12px"><h3>Observações</h3>' + U.esc(ped.obs) + '</div>';
     h += '<div class="box" style="margin-top:12px"><h3>Instruções</h3>Citar o número ' + U.esc(ped.numero) + ' na nota fiscal. Entregas somente em dias úteis. Materiais fora da especificação serão devolvidos.</div>';
-    h += '<div class="sign"><div>' + U.esc(comp ? comp.nome : 'Comprador(a)') + '<br>Compras</div><div>Aprovação</div></div>';
+    h += '<div class="sign"><div>' + U.esc(comp ? comp.nome : 'Comprador(a)') + '<br>Compras</div><div>' + (ped.aprovacao && ped.aprovacao.resultado === 'aprovado' ? 'Aprovado por ' + U.esc(ped.aprovacao.porNome) + '<br>' + U.dateTime(ped.aprovacao.em) + ' · alçada nível ' + ped.aprovacao.nivel : 'Aprovação') + '</div></div>';
     h += '<div class="foot">Documento gerado pelo sistema de compras Brasmic em ' + U.dateTime(U.nowIso()) + '.</div></div>';
     return h;
   };
@@ -225,7 +226,7 @@
   /* ---------- Solicitação ---------- */
   Docs.solicitacaoHtml = function (sol) {
     let h = '<div class="doc">' + head('Solicitação de Compra', sol.numero, sol.data);
-    h += '<div class="blk"><div class="box"><h3>Solicitante</h3>' + U.esc(D.pessoa('solicitantes', sol.solicitanteId)) + '<br>Centro de custo: ' + U.esc(D.centro(sol.centroCustoId)) + '<br>Comprador(a): ' + U.esc(D.pessoa('compradores', sol.compradorId)) + '</div>' +
+    h += '<div class="blk"><div class="box"><h3>Solicitante</h3>' + U.esc(D.solicitanteNome(sol)) + '<br>Centro de custo: ' + U.esc(D.centro(sol.centroCustoId)) + '<br>Comprador(a): ' + U.esc(D.pessoa('compradores', sol.compradorId)) + '</div>' +
       '<div class="box"><h3>Destino</h3>' + U.esc(D.DESTINO[sol.destino]) + (sol.aplicacao ? '<br>' + U.esc(sol.aplicacao) : '') + '<br>Prioridade: ' + U.esc(D.PRIORIDADE[sol.prioridade] || '') + '<br>Necessário até: ' + U.date(sol.necessidade) + '</div></div>';
     h += '<table><thead><tr><th>Item</th><th>Código</th><th>Descrição</th><th class="n">Qtd</th><th>Unid</th><th>Marca</th><th>Obs.</th></tr></thead><tbody>';
     sol.itens.forEach((it, i) => {

@@ -1,78 +1,79 @@
-# Banco de dados na nuvem (Supabase)
+# Banco de dados central (Supabase) — passo a passo
 
-Com o banco na nuvem, requisitantes e compradores trabalham na **mesma base**, em qualquer computador ou celular.
-Tudo o que um usuário salva aparece para os outros em até 15 segundos. Sem internet, o sistema continua funcionando e envia as alterações quando a conexão volta.
+Com o Supabase configurado, **todos os dados ficam no banco central**: cadastros, solicitações, cotações, pedidos, entregas, estoque e registros.
+Todo usuário entra com e-mail e senha e vê os mesmos dados, conforme as permissões da categoria dele.
+O navegador guarda só uma cópia de trabalho; cada gravação é confirmada pelo banco ("gravado no banco central").
 
-O Supabase é um PostgreSQL na nuvem com plano gratuito (500 MB de banco, suficiente para anos de solicitações e cotações).
+As regras de acesso valem **no próprio banco**, não só nas telas: um usuário básico não consegue ler pedidos nem alterar produtos, mesmo tentando pela API. Pedidos acima da alçada também são recusados se o autorizador não tiver o nível exigido.
 
-## 1. Criar o banco (uma vez, ~10 minutos)
+---
 
-1. Acesse **https://supabase.com** → *Start your project* → entre com e-mail ou GitHub.
-2. *New project*:
-   - **Name:** `brasmic-compras`
-   - **Database password:** crie uma senha forte e guarde (é do administrador; os usuários não usam).
-   - **Region:** *South America (São Paulo)*.
-3. Aguarde o projeto ficar pronto (1–2 minutos).
-4. Menu lateral → **SQL Editor** → *New query* → cole todo o conteúdo do arquivo [`supabase/schema.sql`](../supabase/schema.sql) → **Run**. Deve aparecer *Success*.
+## Passo 1 — Criar as tabelas (SQL Editor do Supabase)
 
-## 2. Bloquear cadastro público e criar os usuários
+1. Abra o projeto em **supabase.com** → menu lateral **SQL Editor** → **New query**.
+2. Copie **todo** o conteúdo do arquivo [`supabase/schema.sql`](../supabase/schema.sql) do GitHub, cole e clique em **Run**.
+   Deve aparecer **Success. No rows returned**.
+   O script pode ser executado de novo sem perder dados (por exemplo, depois de uma atualização do portal).
 
-1. **Authentication → Sign In / Providers** (ou *Settings*): desligue **Allow new users to sign up**. Assim só entra quem o administrador cadastrar.
-2. **Authentication → Users → Add user → Create new user**, para cada pessoa:
-   - e-mail e senha;
-   - marque **Auto Confirm User**.
-   Crie um usuário para cada comprador e requisitante.
+O script cria:
 
-## 3. Pegar os dois códigos de conexão
-
-**Project Settings → API** (ou *Data API* / *API Keys*):
-- **Project URL** — ex.: `https://abcdefghijk.supabase.co`
-- **anon public key** (ou *publishable key*) — um código longo.
-
-A chave *anon/publishable* pode ficar no navegador: sem login válido ela não dá acesso a nenhum dado (as regras de segurança do script exigem usuário autenticado).
-**Nunca** use a chave *service_role* / *secret* no aplicativo.
-
-## 4a. Publicar na Vercel com as variáveis de ambiente (recomendado)
-
-Na Vercel: **Add New → Project →** importe o repositório `projeto-compras`. O `vercel.json` já define o build (`npm run build`) e a pasta de saída (`dist`).
-
-Em **Settings → Environment Variables** (marque *Production*, *Preview* e *Development*):
-
-| Nome | Valor (Supabase → Project Settings → API) |
+| Tabela | Conteúdo |
 |---|---|
-| `SUPABASE_URL` | Project URL, ex.: `https://abcdefghijk.supabase.co` |
-| `SUPABASE_ANON_KEY` | chave **anon public** (ou *publishable key*, `sb_publishable_…`) |
+| `registros` | Todos os dados do portal (um registro por linha, conteúdo em JSON) |
+| `perfis` | Usuários do portal: categoria, centros de custo e permissões |
+| `alcadas` | Níveis e valores de aprovação (já vem com R$ 500 / R$ 1.000 / acima) |
+| `auditoria` | Registro de tudo o que cada usuário fez, com data e hora |
 
-Também são aceitos os nomes criados pela integração Supabase da Vercel (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
-Depois de salvar as variáveis, faça **Redeploy**. O build recusa a chave `service_role`/secret.
+## Passo 2 — Criar o seu usuário administrador
 
-Com as variáveis configuradas, o sistema publicado abre pedindo apenas **e-mail e senha** de cada usuário.
+1. **Authentication → Sign In / Providers**: confirme que **Email** está habilitado e **desligue "Allow new users to sign up"**. Assim só entra quem o administrador cadastrar.
+2. **Authentication → Users → Add user → Create new user**: informe **o seu** e-mail e uma senha e marque **Auto Confirm User**.
+3. Volte ao **SQL Editor**, rode a linha abaixo com o seu e-mail e nome e confira a mensagem *Pronto: … agora é administrador do portal*:
+   ```sql
+   select public.tornar_admin('seu.email@brasmic.com.br', 'Seu Nome');
+   ```
 
-## 4b. Conectar sem a Vercel
+Os demais usuários você cadastra **dentro do portal** (Administração → Usuários e acessos), depois do passo 3.
 
-Em cada computador (ou celular):
-1. Abra o sistema → **Configurações → Banco de dados na nuvem**.
-2. Preencha *Project URL*, *chave pública*, *e-mail* e *senha* do usuário → **Conectar**.
-3. No **primeiro** computador, com o banco vazio, escolha **Começar limpo** (ou envie os dados que já digitou).
-   Nos demais, o sistema baixa os dados da nuvem.
+## Passo 3 — Ligar o portal ao banco (Vercel)
 
-O indicador no rodapé do menu lateral mostra a situação: verde = sincronizado, amarelo = sincronizando, vermelho = sem conexão ou login expirado.
+No Supabase, abra **Project Settings → API Keys** (ou **API**) e copie três valores:
 
-## Como funciona
+| Variável na Vercel | Onde encontrar | Observação |
+|---|---|---|
+| `SUPABASE_URL` | **Project URL** (ex.: `https://abcd1234.supabase.co`) | |
+| `SUPABASE_ANON_KEY` | chave **anon public** ou **publishable** (`sb_publishable_…`) | Fica no navegador; sem login não dá acesso a nada |
+| `SUPABASE_SERVICE_ROLE_KEY` | chave **service_role** ou **secret** (`sb_secret_…`) | **Somente no servidor.** Usada apenas para cadastrar usuários e redefinir senhas. Nunca a coloque no código nem compartilhe |
 
-| Item | Onde fica |
-|---|---|
-| Solicitações, cotações, propostas, pedidos, estoque, cadastros, configurações da empresa | tabela `registros` (um registro por linha, conteúdo em JSON) |
-| Histórico de todas as alterações (quem, quando, o quê) | tabela `registros_historico` (consultar pelo *Table Editor* do Supabase) |
-| Cópia local para trabalhar sem internet | navegador de cada computador |
+Na **Vercel** → projeto `projeto-compras` → **Settings → Environment Variables**, cadastre as três variáveis, marcando *Production*, *Preview* e *Development*.
+Depois: **Deployments** → três pontinhos do último deploy → **Redeploy**.
 
-- **Exclusões** são marcadas (não apagadas fisicamente), para chegarem aos outros computadores e preservarem o histórico.
-- **Numeração** (SC-, CT-, PC-) considera os números já existentes na base compartilhada.
-- **Conflito:** se duas pessoas alterarem o mesmo registro ao mesmo tempo, vale a última gravação; a versão anterior fica em `registros_historico`.
-- **Backups:** o Supabase faz backup diário automático nos planos pagos; no gratuito, use também *Configurações → Baixar cópia* periodicamente.
+> O build confere as chaves: se a chave secreta for colocada por engano em `SUPABASE_ANON_KEY`, o deploy para com erro, em vez de expor a chave.
 
-## Publicar o aplicativo na internet (opcional)
+## Passo 4 — Primeiro acesso
 
-Para abrir o sistema de qualquer lugar por um link `https` (necessário para o microfone no celular):
-GitHub → repositório → **Settings → Pages** → *Deploy from a branch* → `main` / root → **Save**.
-O endereço fica `https://<usuario>.github.io/projeto-compras/`.
+1. Abra o portal (ex.: `https://projeto-compras-tau.vercel.app`). Aparece a tela de **login**.
+2. Entre com o usuário do passo 2.
+3. **Dados que estavam só no seu computador** (por exemplo, a planilha de fornecedores do ERP importada antes): o portal mostra a janela *Dados encontrados só neste computador*. Marque o que enviar (fornecedores, produtos, centros de custo…) e clique em **Enviar ao banco central**. Registros marcados "(exemplo)" ficam de fora.
+   Se fechar a janela, dá para fazer depois em **Configurações → Dados só neste computador**.
+4. Em **Configurações → Diagnosticar conexão**, confira se está tudo "ok" e quantos registros há no banco.
+
+## Passo 5 — Cadastros básicos e usuários
+
+1. **Cadastros → Centros de custo**, **Equipamentos** (cada um no seu centro de custo) e **Categorias de despesa** (botão *Incluir categorias padrão*).
+2. **Cadastros → Compradores e alçadas**: em cada comprador, marque os **níveis de alçada** que ele pode aprovar.
+3. **Administração → Alçadas de aprovação**: ajuste os valores, se necessário.
+4. **Administração → Usuários e acessos → Novo usuário**: nome, e-mail, senha inicial, categoria (Básico, Comprador ou Administrador), centros de custo, vínculo com solicitante/comprador e permissões (totalizadores, registros, cadastro de produtos e fornecedores).
+5. **Fornecedores / Produtos / Equipamentos → Importar planilha**: o portal reconhece as colunas do ERP e mostra uma tela de conferência antes de gravar no banco.
+
+---
+
+## Como funciona por dentro
+
+- **Gravação**: cada alteração é enviada ao banco em até 1 segundo. Em cadastros, importações e aprovações, a tela só confirma depois que o banco aceitou.
+- **Atualização**: o portal busca as alterações dos outros usuários a cada 15 segundos e ao voltar para a aba.
+- **Sem internet**: o portal avisa ("Banco central: sem conexão") e grava as alterações quando a conexão voltar.
+- **Recusa do banco** (sem permissão ou alçada insuficiente): o portal mostra o motivo e volta a tela para o que está no banco.
+- **Exclusões** ficam marcadas, sem apagar o histórico. Cada alteração fica na tabela `auditoria`, com campo, valor anterior e valor novo.
+- **Numeração** (SC-, CT-, PC-, ENT-) considera os números já existentes no banco.
+- **Backup**: o plano gratuito do Supabase não tem backup automático diário. Use **Configurações → Baixar cópia** periodicamente ou contrate o plano Pro.

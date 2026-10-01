@@ -13,6 +13,19 @@ Funciona direto no navegador, sem instalação. Pode trabalhar sozinho (dados sa
   ```
 - No primeiro acesso o sistema abre com **dados de exemplo** para treinamento. Em *Configurações → Limpar exemplos e começar* ele fica zerado para uso real.
 
+## Novidades desta versão
+
+- **Banco central obrigatório** quando o Supabase está configurado: login para todos, dados iguais para todos, gravação confirmada pelo banco e recuperação dos dados que ficaram só no navegador.
+- **Usuários e permissões**: categorias Básico, Comprador e Administrador. Centros de custo por usuário, totalizadores restritos, consulta de registros e cadastro de produtos/fornecedores só para quem for autorizado. As regras também valem no próprio banco (RLS).
+- **Alçadas de aprovação**: níveis e valores configuráveis. Pedidos acima do limite aguardam um autorizador com os níveis 1 até N.
+- **Registros (auditoria)**: quem fez o quê, quando, com valor anterior e valor novo.
+- **Destino**: Aplicação direta, Estoque ou **Ambas**, com destino por item e confirmação na troca.
+- **Categorias**: na solicitação, escolhe-se a categoria e o campo de produto mostra só os produtos dela.
+- **Equipamentos e categorias de despesa coletiva** por centro de custo. O custo da aplicação direta é lançado no equipamento ou na despesa.
+- **Atendimento pelo estoque** antes de cotar: baixa no estoque, entrega ao solicitante, aceite no portal e opção de manter a cotação para repor o estoque.
+- **Relatório de custos** por equipamento, despesa, centro de custo, categoria, produto, fornecedor, origem ou mês, em qualquer período.
+- **Importação de planilhas do ERP** com reconhecimento de colunas e tela de conferência (contato e e-mail em campos separados).
+
 ## Fluxo
 
 ```
@@ -71,9 +84,13 @@ css/app.css           identidade visual (cores da marca Brasmic)
 assets/               logotipo e ícone
 js/util.js            formatação, números em pt-BR, similaridade de textos, CNPJ
 js/parser.js          interpretação de ditado, OCR e propostas
-js/store.js           armazenamento no navegador
+js/rules.js           regras de acesso, alçadas e destino (testadas)
+js/auth.js            login, usuários, alçadas e auditoria
+js/importmap.js       reconhecimento de colunas de planilhas do ERP
+js/store.js           cópia de trabalho no navegador
 js/cloud.js           login e sincronização com o banco na nuvem (Supabase)
-supabase/schema.sql   script de criação do banco, segurança e histórico
+supabase/schema.sql   tabelas, regras de acesso (RLS), alçadas e auditoria do banco
+api/usuarios.js       função do servidor (Vercel) que cria usuários e redefine senhas
 js/domain.js          regras do processo (cotação, mapa, pedidos, estoque)
 js/capture.js         voz, OCR, PDF e planilhas
 js/docs.js            pedido de cotação, pedido de compra, mapa (impressão/Excel)
