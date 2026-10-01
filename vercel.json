@@ -1,0 +1,7 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "headers": [
+    { "source": "/js/env.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+  ]
+}

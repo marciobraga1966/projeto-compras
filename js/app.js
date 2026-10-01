@@ -93,7 +93,13 @@
 
   (async function start() {
     const had = await S.init();
-    if (!had && !root.Cloud.configured()) root.Seed.load();
+    const env = root.BRASMIC_ENV || {};
+    const servidorEmpresa = !!(env.supabaseUrl && env.supabaseAnonKey);
+    if (!had && !root.Cloud.configured() && !servidorEmpresa) root.Seed.load();
+    if (servidorEmpresa && !root.Cloud.configured() && !root.Cloud.info()) {
+      location.hash = '#/config';
+      setTimeout(() => UI.toast('Entre com seu e-mail e senha para acessar o sistema de compras'), 300);
+    }
     route();
     root.Cloud.iniciar();
   })();

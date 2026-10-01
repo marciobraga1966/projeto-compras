@@ -8,6 +8,7 @@
     const C2 = root.Cloud;
     const info = C2.info();
     const st = C2.status();
+    const env = root.BRASMIC_ENV || {};
     if (C2.configured()) {
       return '<div class="card"><div class="hd"><h2>Banco de dados na nuvem</h2>' + (st.estado === 'ok' ? '<span class="pill ok">Conectado</span>' : st.estado === 'erro' ? '<span class="pill bad">Sem conexão</span>' : '<span class="pill warn">' + U.esc(st.estado) + '</span>') + '</div><div class="bd stack">' +
         '<dl class="kv"><dt>Servidor</dt><dd>' + U.esc(info.url) + '</dd><dt>Usuário</dt><dd>' + U.esc(info.email) + '</dd>' + (st.msg ? '<dt>Situação</dt><dd>' + U.esc(st.msg) + '</dd>' : '') + '</dl>' +
@@ -17,8 +18,10 @@
     return '<div class="card"><div class="hd"><h2>Banco de dados na nuvem</h2><span class="pill neutral">Não conectado</span></div><div class="bd stack">' +
       '<p class="small muted" style="margin:0">Conecte ao banco da empresa (Supabase) para que requisitantes e compradores trabalhem na mesma base, em qualquer computador ou celular. O passo a passo está no arquivo <b>docs/BANCO-NA-NUVEM.md</b> do projeto.</p>' +
       '<div class="form">' +
-      '<div class="f s6"><label for="cl-url">Project URL</label><input id="cl-url" placeholder="https://xxxxxxxx.supabase.co" value="' + U.esc(info ? info.url : '') + '"></div>' +
-      '<div class="f s6"><label for="cl-key">Chave pública (anon / publishable key)</label><input id="cl-key" value="' + U.esc(info ? info.anonKey : '') + '"></div>' +
+      (env.supabaseUrl && env.supabaseAnonKey
+        ? '<div class="f s12"><label>Servidor da empresa</label><div class="small" style="padding-top:6px">' + U.esc(env.supabaseUrl) + '</div><input type="hidden" id="cl-url" value="' + U.esc(env.supabaseUrl) + '"><input type="hidden" id="cl-key" value="' + U.esc(env.supabaseAnonKey) + '"></div>'
+        : '<div class="f s6"><label for="cl-url">Project URL</label><input id="cl-url" placeholder="https://xxxxxxxx.supabase.co" value="' + U.esc(info ? info.url : '') + '"></div>' +
+          '<div class="f s6"><label for="cl-key">Chave pública (anon / publishable key)</label><input id="cl-key" value="' + U.esc(info ? info.anonKey : '') + '"></div>') +
       '<div class="f s6"><label for="cl-email">Seu e-mail de usuário</label><input id="cl-email" type="email" autocomplete="username" value="' + U.esc(info ? info.email : '') + '"></div>' +
       '<div class="f s6"><label for="cl-pass">Senha</label><input id="cl-pass" type="password" autocomplete="current-password"></div>' +
       '</div><div class="row"><button class="btn pri" id="cl-on">Conectar</button></div></div></div>';

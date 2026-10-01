@@ -32,7 +32,23 @@ O Supabase é um PostgreSQL na nuvem com plano gratuito (500 MB de banco, sufici
 A chave *anon/publishable* pode ficar no navegador: sem login válido ela não dá acesso a nenhum dado (as regras de segurança do script exigem usuário autenticado).
 **Nunca** use a chave *service_role* / *secret* no aplicativo.
 
-## 4. Conectar o aplicativo
+## 4a. Publicar na Vercel com as variáveis de ambiente (recomendado)
+
+Na Vercel: **Add New → Project →** importe o repositório `projeto-compras`. O `vercel.json` já define o build (`npm run build`) e a pasta de saída (`dist`).
+
+Em **Settings → Environment Variables** (marque *Production*, *Preview* e *Development*):
+
+| Nome | Valor (Supabase → Project Settings → API) |
+|---|---|
+| `SUPABASE_URL` | Project URL, ex.: `https://abcdefghijk.supabase.co` |
+| `SUPABASE_ANON_KEY` | chave **anon public** (ou *publishable key*, `sb_publishable_…`) |
+
+Também são aceitos os nomes criados pela integração Supabase da Vercel (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
+Depois de salvar as variáveis, faça **Redeploy**. O build recusa a chave `service_role`/secret.
+
+Com as variáveis configuradas, o sistema publicado abre pedindo apenas **e-mail e senha** de cada usuário.
+
+## 4b. Conectar sem a Vercel
 
 Em cada computador (ou celular):
 1. Abra o sistema → **Configurações → Banco de dados na nuvem**.
