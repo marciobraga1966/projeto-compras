@@ -442,3 +442,43 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .doc .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 50px; text-align: center; font-size: 9pt; }
 .doc .sign div { border-top: 1px solid #000; padding-top: 4px; }
 .doc .foot { margin-top: 16px; font-size: 8pt; color: #555; border-top: 1px solid #ccc; padding-top: 6px; }
+
+/* ---------- Login ---------- */
+.login {
+  position: fixed; inset: 0; z-index: 300; overflow-y: auto;
+  display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+  background:
+    linear-gradient(160deg, transparent 0 62%, color-mix(in srgb, var(--sun) 85%, transparent) 62% 66%, transparent 66%),
+    var(--brand);
+}
+.login-box {
+  width: min(420px, 100%); background: var(--surface); color: var(--ink); border-radius: 10px;
+  padding: 26px 26px 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
+}
+.login-box img { width: 220px; margin: 0 auto 2px; display: block; background: #fff; padding: 8px 10px; border-radius: 6px; }
+.login-sys { text-align: center; font: 700 .74rem/1 var(--font-display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.login-box .f > label { font-size: .74rem; }
+.login-box .btn.pri { justify-content: center; padding: 11px; }
+.login-box p { margin: 0; }
+.demo-users { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
+.demo-users .btn { justify-content: flex-start; white-space: normal; text-align: left; }
+
+/* usuário logado no menu */
+.user-box { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: #fff; }
+.user-box .who { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.user-box .who b { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-box .who span { font-size: .72rem; color: var(--sun); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+.user-box .btn { margin-left: auto; background: transparent; color: #fff; border-color: rgba(255, 255, 255, .35); }
+.user-box .btn:hover { border-color: #fff; }
+
+.tag.amb { background: color-mix(in srgb, var(--sun) 35%, var(--surface)); color: var(--sun-ink); }
+:root[data-theme="dark"] .tag.amb { color: var(--ink); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag.amb { color: var(--ink); } }
+.chk { align-items: flex-start; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 5px; }
+.chk input { margin-top: 3px; }
+.chips-sel { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 8px 0; }
+.diag { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: .9rem; }
+.aprov { border-color: var(--warn); box-shadow: inset 4px 0 0 var(--warn), var(--shadow); }
+.doc .stamp { border: 3px solid #b42b2b; color: #b42b2b; font: 800 13pt var(--font-display); text-align: center; padding: 6px; margin-bottom: 10px; letter-spacing: .06em; }
+
+.tbl tr.sel-row td { background: var(--info-bg); }

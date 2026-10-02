@@ -76,7 +76,10 @@
         '<div class="f s4"><label for="m-doc">Documento</label><input id="m-doc" placeholder="' + (tipo === 'entrada' ? 'NF / inventário' : 'Nº requisição de material') + '"></div>' +
         (tipo === 'entrada' ? '<div class="f s4"><label for="m-c">Custo unitário</label><input id="m-c" class="n" inputmode="decimal"></div>'
           : '<div class="f s4"><label for="m-cc">Centro de custo</label><select id="m-cc">' + UI.options(S.all('centrosCusto'), '', x => x.codigo + ' · ' + x.descricao, 'Selecione…') + '</select></div>' +
-            '<div class="f s6"><label for="m-sol">Retirado por</label><select id="m-sol">' + UI.options(S.all('solicitantes'), '', x => x.nome, '—') + '</select></div>') +
+            '<div class="f s6"><label for="m-sol">Retirado por</label><select id="m-sol">' + UI.options(S.all('solicitantes'), '', x => x.nome, '—') + '</select></div>' +
+            '<div class="f s6"><label for="m-ap">Custo apropriado em</label><select id="m-ap"><option value="">— somente centro de custo —</option>' +
+            S.all('equipamentos').filter(e => e.ativo !== false).map(e => '<option value="eq:' + e.id + '">Equip. ' + U.esc((e.codigo ? e.codigo + ' · ' : '') + e.descricao) + '</option>').join('') +
+            S.all('categoriasDespesa').filter(c => c.ativo !== false).map(c => '<option value="cat:' + c.id + '">Despesa: ' + U.esc(c.descricao) + '</option>').join('') + '</select></div>') +
         '<div class="f s12"><label for="m-obs">Observação</label><input id="m-obs"></div></div>',
       buttons: [{ label: 'Cancelar' }, { label: 'Registrar ' + tipo, cls: 'pri', action: m => {
         const pid = UI.$('#m-p', m.el).value;
@@ -85,11 +88,15 @@
         if (tipo === 'saida' && qtd > D.saldo(pid)) { UI.toast('Quantidade maior que o saldo disponível (' + U.num(D.saldo(pid)) + ')', 'bad'); return false; }
         if (tipo === 'saida' && !UI.$('#m-cc', m.el).value) { UI.toast('Informe o centro de custo da saída', 'bad'); return false; }
         const sol = tipo === 'saida' ? S.find('solicitantes', UI.$('#m-sol', m.el).value) : null;
+        const ap = tipo === 'saida' ? UI.$('#m-ap', m.el).value : '';
+        const prod = S.find('produtos', pid);
         S.upsert('movimentos', {
           data: UI.$('#m-d', m.el).value, produtoId: pid, tipo: tipo, qtd: qtd, manual: true,
           custoUnit: tipo === 'entrada' ? U.parseNum(UI.$('#m-c', m.el).value) : D.custoMedio(pid),
           doc: UI.$('#m-doc', m.el).value.trim(), origem: tipo === 'entrada' ? 'Entrada manual' : 'Requisição de material' + (sol ? ' — ' + sol.nome : ''),
-          centroCustoId: tipo === 'saida' ? UI.$('#m-cc', m.el).value : '', obs: UI.$('#m-obs', m.el).value.trim()
+          centroCustoId: tipo === 'saida' ? UI.$('#m-cc', m.el).value : '', obs: UI.$('#m-obs', m.el).value.trim(),
+          equipamentoId: ap.indexOf('eq:') === 0 ? ap.slice(3) : '', categoriaDespesaId: ap.indexOf('cat:') === 0 ? ap.slice(4) : '',
+          categoria: prod ? prod.categoria || '' : ''
         });
         S.log((tipo === 'entrada' ? 'Entrada' : 'Saída') + ' de ' + U.num(qtd) + ' ' + (S.find('produtos', pid) || {}).descricao);
         UI.toast('Movimentação registrada', 'ok');

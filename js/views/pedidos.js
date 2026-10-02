@@ -1,19 +1,20 @@
 /* Pedidos de compra: lista, envio ao fornecedor, recebimento e cancelamento */
 (function (root) {
   'use strict';
-  const { U, S, D, UI, C, Docs } = root;
+  const { U, S, D, UI, C, Docs, R, Auth } = root;
   const V = root.V = root.V || {};
   let filtroStatus = 'abertos';
 
   V.pedList = function () {
     UI.setHeader('Pedidos de compra', 'Processo', '<button class="btn" id="exp">' + UI.icon('download') + 'Exportar</button>');
-    const v = UI.render('<div class="card"><div class="hd"><div class="toolbar"><select id="f-st"><option value="abertos">A receber</option><option value="">Todos</option>' +
+    const v = UI.render('<div class="card"><div class="hd"><div class="toolbar"><select id="f-st"><option value="aprovar">Aguardando aprovação</option><option value="abertos">A receber</option><option value="">Todos</option>' +
       Object.keys(D.STATUS_PED).map(k => '<option value="' + k + '">' + D.STATUS_PED[k].t + '</option>').join('') + '</select><input type="search" id="f-q" placeholder="Buscar número ou fornecedor"></div><div class="acts muted small" id="tot"></div></div><div class="bd flush"><div class="tbl-wrap" id="tb"></div></div></div>');
     UI.$('#f-st', v).value = filtroStatus;
     let q = '';
     function draw() {
       const list = S.all('pedidos').filter(p => {
         if (filtroStatus === 'abertos' && ['emitido', 'enviado', 'recebido_parcial'].indexOf(p.status) < 0) return false;
+        if (filtroStatus === 'aprovar' && p.status !== 'aguardando_aprovacao') return false;
         if (filtroStatus && filtroStatus !== 'abertos' && p.status !== filtroStatus) return false;
         if (q && U.norm(p.numero + ' ' + D.fornecedorNome(p.fornecedorId)).indexOf(U.norm(q)) < 0) return false;
         return true;
@@ -53,15 +54,27 @@
       '<button class="btn" id="prt">' + UI.icon('print') + 'Imprimir / PDF</button>' +
       (aberto ? '<button class="btn pri" id="rec">' + UI.icon('box') + 'Registrar recebimento</button>' : ''));
 
-    const idx = { emitido: 0, enviado: 1, recebido_parcial: 2, recebido: 3 }[ped.status];
+    const idx = { aguardando_aprovacao: 0, emitido: 1, enviado: 2, recebido_parcial: 3, recebido: 4 }[ped.status];
     let h = '<div class="card"><div class="bd"><div class="row" style="justify-content:space-between"><div class="steps">' +
-      ['Emitido', 'Enviado ao fornecedor', 'Recebimento parcial', 'Recebido'].map((t, i) => '<span class="' + (idx === undefined ? '' : i < idx ? 'done' : i === idx ? 'now' : '') + '">' + t + '</span>').join('') +
+      ['Aprovação', 'Emitido', 'Enviado ao fornecedor', 'Recebimento parcial', 'Recebido'].map((t, i) => '<span class="' + (idx === undefined ? '' : i < idx ? 'done' : i === idx ? 'now' : '') + '">' + t + '</span>').join('') +
       '</div>' + UI.pill(D.STATUS_PED, ped.status) + '</div></div></div>';
+    const nivel = D.nivelPedido(ped);
+    if (ped.status === 'aguardando_aprovacao') {
+      const pode = D.podeAprovar(ped);
+      h += '<div class="card aprov"><div class="hd"><h2>Aprovação por alçada</h2><span class="pill warn">Exige autorizador com níveis 1 a ' + nivel + '</span></div><div class="bd stack">' +
+        '<p style="margin:0">Valor do pedido: <b>' + U.money(ped.total) + '</b>' + (ped.criadoPorNome ? ' · gerado por <b>' + U.esc(ped.criadoPorNome) + '</b>' : '') + '. ' + R.descreverAlcada(S.db.alcadas).map(a => 'Nível ' + a.nivel + ': ' + a.faixa).join(' · ') + '</p>' +
+        (pode ? '<div class="f"><label for="ap-mot">Observação da aprovação / motivo da reprovação</label><input id="ap-mot"></div><div class="row"><button class="btn pri" id="ap-ok">' + UI.icon('check') + 'Aprovar pedido</button><button class="btn danger" id="ap-no">' + UI.icon('x') + 'Reprovar</button></div>'
+          : R.ehAutorDoPedido(ped, Auth.user.id) ? '<div class="note warn">Você gerou este pedido e por isso não pode aprová-lo. A aprovação deve ser feita por outro autorizador com os níveis 1 a ' + nivel + '.</div>'
+          : '<div class="note warn">Você não tem alçada para aprovar este pedido. Ele aguarda um autorizador com os níveis 1 a ' + nivel + '. O pedido não pode ser enviado ao fornecedor antes da aprovação.</div>') +
+        '</div></div>';
+    } else if (ped.aprovacao) {
+      h += '<div class="note ' + (ped.aprovacao.resultado === 'aprovado' ? '' : 'bad') + '">' + (ped.aprovacao.resultado === 'aprovado' ? 'Aprovado' : 'Reprovado') + ' por <b>' + U.esc(ped.aprovacao.porNome) + '</b> em ' + U.dateTime(ped.aprovacao.em) + ' (alçada nível ' + ped.aprovacao.nivel + ')' + (ped.aprovacao.motivo ? ' — ' + U.esc(ped.aprovacao.motivo) : '') + '</div>';
+    }
     h += '<div class="grid g2"><div class="card"><div class="hd"><h2>Fornecedor</h2></div><div class="bd"><dl class="kv">' +
       '<dt>Razão social</dt><dd>' + U.esc(f.razao || '—') + '</dd><dt>CNPJ</dt><dd>' + U.esc(f.cnpj || '—') + '</dd>' +
       '<dt>Contato</dt><dd>' + U.esc([f.contato, f.telefone, f.email].filter(Boolean).join(' · ') || '—') + '</dd></dl>' +
-      '<div class="row" style="margin-top:12px"><button class="btn sm" id="mail">' + UI.icon('mail') + 'Enviar por e-mail</button><button class="btn sm" id="wa">' + UI.icon('whats') + 'WhatsApp</button><button class="btn sm" id="cp">' + UI.icon('copy') + 'Copiar texto</button>' +
-      (ped.status === 'emitido' ? '<button class="btn sm sun" id="sent">' + UI.icon('check') + 'Marcar como enviado</button>' : '') + '</div></div></div>';
+      (ped.status === 'aguardando_aprovacao' || ped.status === 'reprovado' ? '' : '<div class="row" style="margin-top:12px"><button class="btn sm" id="mail">' + UI.icon('mail') + 'Enviar por e-mail</button><button class="btn sm" id="wa">' + UI.icon('whats') + 'WhatsApp</button><button class="btn sm" id="cp">' + UI.icon('copy') + 'Copiar texto</button>' +
+      (ped.status === 'emitido' ? '<button class="btn sm sun" id="sent">' + UI.icon('check') + 'Marcar como enviado</button>' : '') + '</div>') + '</div></div>';
     h += '<div class="card"><div class="hd"><h2>Condições</h2></div><div class="bd"><div class="form">' +
       '<div class="f s6"><label for="pd-pag">Pagamento</label><input id="pd-pag" value="' + U.esc(ped.condPagamento) + '"' + (aberto ? '' : ' disabled') + '></div>' +
       '<div class="f s6"><label for="pd-prev">Previsão de entrega</label><input type="date" id="pd-prev" value="' + U.esc(ped.previsaoEntrega) + '"' + (aberto ? '' : ' disabled') + '></div>' +
@@ -81,7 +94,7 @@
       h += '<div class="card"><div class="hd"><h2>Recebimentos</h2></div><div class="bd"><ul class="timeline">' +
         ped.recebimentos.map(r => '<li><span>' + U.date(r.data) + '</span><div>' + (r.nf ? 'NF ' + U.esc(r.nf) + ' — ' : '') + Object.keys(r.itens).map(k => { const it = ped.itens.find(x => x.id === k); return it ? U.num(r.itens[k]) + ' ' + it.unidade + ' ' + U.esc(it.descricao) : ''; }).join('; ') + '</div></li>').join('') + '</ul></div></div>';
     }
-    if (aberto && !ped.recebimentos.length) h += '<div class="row"><button class="btn danger" id="cancel">' + UI.icon('x') + 'Cancelar pedido</button></div>';
+    if ((aberto || ped.status === 'aguardando_aprovacao') && !ped.recebimentos.length) h += '<div class="row"><button class="btn danger" id="cancel">' + UI.icon('x') + 'Cancelar pedido</button></div>';
     UI.render(h);
 
     const saveField = (sel, k) => { const e = UI.$(sel); if (e) e.onchange = () => { ped[k] = e.value; S.save(); }; };
@@ -90,12 +103,24 @@
     const enviado = meio => {
       if (ped.status === 'emitido') { ped.status = 'enviado'; ped.enviadoEm = U.nowIso(); ped.enviadoPor = meio; S.log('Pedido ' + ped.numero + ' enviado (' + meio + ')'); S.save(); V.pedView(id); }
     };
-    UI.$('#mail').onclick = () => {
+    if (UI.$('#ap-ok')) {
+      const decidir = async ok => {
+        const mot = UI.$('#ap-mot').value.trim();
+        if (!ok && !mot) { UI.toast('Informe o motivo da reprovação', 'bad'); UI.$('#ap-mot').focus(); return; }
+        if (!(await UI.confirm((ok ? 'Aprovar' : 'Reprovar') + ' o pedido ' + ped.numero + ' de ' + U.money(ped.total) + '?', ok ? 'Aprovar' : 'Reprovar', !ok ? undefined : false))) return;
+        try { D.aprovarPedido(ped, ok, mot); if (root.Cloud.ativo()) await root.Cloud.gravarAgora(); UI.toast('Pedido ' + (ok ? 'aprovado' : 'reprovado'), 'ok'); }
+        catch (err) { UI.toast(err.message, 'bad'); }
+        V.pedView(id);
+      };
+      UI.$('#ap-ok').onclick = () => decidir(true);
+      UI.$('#ap-no').onclick = () => decidir(false);
+    }
+    if (UI.$('#mail')) UI.$('#mail').onclick = () => {
       location.href = Docs.mailto(f.email, 'Pedido de compra ' + ped.numero + ' — ' + S.config().empresa.nome, Docs.pedidoTexto(ped) + '\n\n(Anexe o PDF gerado em "Imprimir / PDF".)');
       enviado('e-mail');
     };
-    UI.$('#wa').onclick = () => { window.open(Docs.whatsapp(f.whatsapp || f.telefone, Docs.pedidoTexto(ped)), '_blank'); enviado('WhatsApp'); };
-    UI.$('#cp').onclick = () => UI.copy(Docs.pedidoTexto(ped));
+    if (UI.$('#wa')) UI.$('#wa').onclick = () => { window.open(Docs.whatsapp(f.whatsapp || f.telefone, Docs.pedidoTexto(ped)), '_blank'); enviado('WhatsApp'); };
+    if (UI.$('#cp')) UI.$('#cp').onclick = () => UI.copy(Docs.pedidoTexto(ped));
     if (UI.$('#sent')) UI.$('#sent').onclick = () => enviado('manual');
     if (UI.$('#cancel')) UI.$('#cancel').onclick = async () => {
       if (!(await UI.confirm('Cancelar o pedido ' + ped.numero + '? As solicitações ligadas voltam para "Aberta" para nova cotação.', 'Cancelar pedido'))) return;

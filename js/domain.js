@@ -9,6 +9,7 @@
     aberta: { t: 'Aberta', c: 'info' },
     em_cotacao: { t: 'Em cotação', c: 'warn' },
     pedido: { t: 'Pedido emitido', c: 'accent' },
+    aguardando_aceite: { t: 'Entregue — aguardando aceite', c: 'warn' },
     atendida: { t: 'Atendida', c: 'ok' },
     cancelada: { t: 'Cancelada', c: 'bad' }
   };
@@ -19,14 +20,25 @@
     cancelada: { t: 'Cancelada', c: 'bad' }
   };
   D.STATUS_PED = {
+    aguardando_aprovacao: { t: 'Aguardando aprovação', c: 'warn' },
+    reprovado: { t: 'Reprovado', c: 'bad' },
     emitido: { t: 'Emitido', c: 'info' },
     enviado: { t: 'Enviado ao fornecedor', c: 'warn' },
     recebido_parcial: { t: 'Recebido parcial', c: 'accent' },
     recebido: { t: 'Recebido', c: 'ok' },
     cancelado: { t: 'Cancelado', c: 'bad' }
   };
+  D.STATUS_ENT = {
+    aguardando_aceite: { t: 'Aguardando aceite', c: 'warn' },
+    aceita: { t: 'Recebida pelo solicitante', c: 'ok' },
+    recusada: { t: 'Recusada', c: 'bad' }
+  };
+  D.solicitanteNome = sol => (sol.solicitanteId ? D.pessoa('solicitantes', sol.solicitanteId) : (sol.criadoPorNome || '—'));
+  D.equipamento = id => { const e = S.find('equipamentos', id); return e ? (e.codigo ? e.codigo + ' · ' : '') + e.descricao : '—'; };
   D.PRIORIDADE = { normal: 'Normal', alta: 'Alta', urgente: 'Urgente' };
-  D.DESTINO = { aplicacao: 'Aplicação direta', estoque: 'Estoque' };
+  D.DESTINO = { aplicacao: 'Aplicação direta', estoque: 'Estoque', ambas: 'Ambas (estoque e aplicação direta)' };
+
+  const podeCadastrar = () => !root.Auth || root.Auth.perm.editarProdutosFornecedores;
   D.ORIGEM = { digitada: 'Digitada', digitalizada: 'Digitalizada', voz: 'Por voz', reposicao: 'Reposição automática' };
 
   D.nome = function (col, id, field) {
@@ -73,7 +85,12 @@
     sol.historico = sol.historico || [];
     sol.historico.push({ data: U.nowIso(), evento: nova ? 'Solicitação criada (' + (D.ORIGEM[sol.origemEntrada] || 'digitada') + ')' : 'Solicitação alterada' });
     // produtos novos digitados na solicitação entram no cadastro
-    sol.itens.forEach(it => D.vincularProduto(it, 'solicitação ' + sol.numero));
+    sol.itens.forEach(it => {
+      if (sol.destino !== 'ambas') it.destino = sol.destino;
+      it.equipamentoId = it.destino === 'aplicacao' ? (sol.equipamentoId || '') : '';
+      it.categoriaDespesaId = it.destino === 'aplicacao' && !sol.equipamentoId ? (sol.categoriaDespesaId || '') : '';
+      D.vincularProduto(it, 'solicitação ' + sol.numero);
+    });
     S.upsert('solicitacoes', sol, true);
     S.log((nova ? 'Criada ' : 'Alterada ') + sol.numero);
     S.save();
@@ -88,6 +105,8 @@
     const exact = prods.find(p => U.norm(p.descricao) === U.norm(it.descricao));
     const match = exact || (U.bestMatch(it.descricao, prods, p => p.descricao, 0.8) || {}).item;
     if (match) { it.produtoId = match.id; if (!it.unidade) it.unidade = match.unidade; return match; }
+    // só compradores autorizados e administradores cadastram produtos novos
+    if (!podeCadastrar()) return null;
     const p = {
       codigo: S.nextCode('MAT', 'produtos'), descricao: it.descricao, unidade: it.unidade || 'UN',
       categoria: '', marcas: it.marca ? [it.marca] : [], ncm: '', estoqueMin: 0,
@@ -107,21 +126,99 @@
 
   /* ---------- Cotações ---------- */
 
-  D.criarCotacao = function (solIds, compradorId) {
-    const itens = [];
+  /* Itens de aplicação direta que têm saldo em estoque (verificação antes de cotar) */
+  D.itensComEstoque = function (solIds) {
+    const out = [];
     solIds.forEach(sid => {
       const sol = S.find('solicitacoes', sid);
       if (!sol) return;
       sol.itens.forEach(it => {
-        itens.push({
-          id: U.uid(), solicitacaoId: sol.id, solItemId: it.id, produtoId: it.produtoId,
-          descricao: it.descricao, qtd: Number(it.qtd) || 0, unidade: it.unidade, marca: it.marca || '',
-          destino: sol.destino, centroCustoId: sol.centroCustoId
-        });
+        if (it.destino !== 'aplicacao' || !it.produtoId) return;
+        const pend = (Number(it.qtd) || 0) - (Number(it.atendidoEstoque) || 0);
+        const saldo = D.saldo(it.produtoId);
+        if (pend > 0 && saldo > 0) out.push({ sol: sol, item: it, saldo: saldo, pendente: pend, sugerido: Math.min(saldo, pend) });
       });
-      sol.status = 'em_cotacao';
-      sol.historico.push({ data: U.nowIso(), evento: 'Enviada para cotação' });
     });
+    return out;
+  };
+
+  /* Baixa no estoque e entrega ao solicitante (que dará o aceite no portal).
+     retiradas: [{ solId, itemId, qtd }] */
+  D.atenderPeloEstoque = function (retiradas) {
+    const porSol = U.groupBy(retiradas.filter(r => r.qtd > 0), r => r.solId);
+    const entregas = [];
+    Object.keys(porSol).forEach(sid => {
+      const sol = S.find('solicitacoes', sid);
+      const ent = {
+        numero: S.nextNumber('ENT'), data: U.today(), origem: 'estoque', status: 'aguardando_aceite',
+        solicitacaoId: sol.id, solicitacaoNumero: sol.numero, solicitanteId: sol.solicitanteId, solicitanteUserId: sol.criadoPor || '',
+        centroCustoId: sol.centroCustoId, equipamentoId: sol.equipamentoId || '', categoriaDespesaId: sol.categoriaDespesaId || '', itens: [],
+        entreguePor: root.Auth && root.Auth.user ? root.Auth.user.nome : ''
+      };
+      porSol[sid].forEach(r => {
+        const it = sol.itens.find(x => x.id === r.itemId);
+        const disp = D.saldo(it.produtoId);
+        const q = Math.min(r.qtd, disp, (Number(it.qtd) || 0) - (Number(it.atendidoEstoque) || 0));
+        if (q <= 0) return;
+        const custo = D.custoMedio(it.produtoId);
+        const prod = S.find('produtos', it.produtoId);
+        ent.itens.push({ produtoId: it.produtoId, descricao: it.descricao, qtd: q, unidade: it.unidade, custoUnit: custo, total: q * custo, solItemId: it.id });
+        it.atendidoEstoque = (Number(it.atendidoEstoque) || 0) + q;
+        S.upsert('movimentos', {
+          data: ent.data, produtoId: it.produtoId, tipo: 'saida', qtd: q, custoUnit: custo,
+          doc: sol.numero + ' / ' + ent.numero, origem: 'Atendimento pelo estoque', centroCustoId: sol.centroCustoId,
+          equipamentoId: it.equipamentoId || sol.equipamentoId || '', categoriaDespesaId: it.categoriaDespesaId || '', solicitacaoId: sol.id, entregaNumero: ent.numero,
+          categoria: prod ? prod.categoria || '' : '', obs: ''
+        }, true);
+      });
+      if (!ent.itens.length) return;
+      ent.total = U.sum(ent.itens, x => x.total);
+      S.upsert('entregas', ent, true);
+      sol.historico.push({ data: U.nowIso(), evento: 'Atendida pelo estoque (' + ent.numero + ') — aguardando aceite do solicitante' });
+      entregas.push(ent);
+    });
+    if (entregas.length) S.log(entregas.length + ' entrega(s) pelo estoque: ' + entregas.map(e => e.numero).join(', '));
+    return entregas;
+  };
+
+  /* Cria a cotação. plano (opcional) por item: { retirado, manter } —
+     a quantidade retirada do estoque sai da cotação; "manter" cota a reposição do estoque */
+  D.criarCotacao = function (solIds, compradorId, plano) {
+    plano = plano || {};
+    const itens = [];
+    const usadas = [];
+    solIds.forEach(sid => {
+      const sol = S.find('solicitacoes', sid);
+      if (!sol) return;
+      let algum = false;
+      sol.itens.forEach(it => {
+        const base = {
+          solicitacaoId: sol.id, solItemId: it.id, produtoId: it.produtoId, descricao: it.descricao, unidade: it.unidade, marca: it.marca || '',
+          centroCustoId: sol.centroCustoId, aplicacao: sol.aplicacao || '', equipamentoId: it.equipamentoId || '', categoriaDespesaId: it.categoriaDespesaId || ''
+        };
+        const retirado = Number(it.atendidoEstoque) || 0;
+        const resto = (Number(it.qtd) || 0) - retirado;
+        if (resto > 1e-9) {
+          itens.push(Object.assign({ id: U.uid(), qtd: resto, destino: it.destino || (sol.destino === 'estoque' ? 'estoque' : 'aplicacao') }, base));
+          algum = true;
+        }
+        const pl = plano[it.id];
+        if (pl && pl.manter && pl.retirado > 0) {
+          itens.push(Object.assign({}, base, { id: U.uid(), qtd: pl.retirado, destino: 'estoque', reposicao: true, equipamentoId: '', categoriaDespesaId: '' }));
+          algum = true;
+        }
+      });
+      if (algum) {
+        sol.status = 'em_cotacao';
+        sol.historico.push({ data: U.nowIso(), evento: 'Enviada para cotação' });
+        usadas.push(sol.id);
+      } else {
+        // tudo atendido pelo estoque: aguarda o aceite do solicitante
+        sol.status = 'aguardando_aceite';
+      }
+    });
+    if (!itens.length) { S.save(); return null; }
+    solIds = usadas;
     const firstSol = S.find('solicitacoes', solIds[0]);
     const cfg = S.config();
     const cot = {
@@ -162,7 +259,7 @@
     cot.itens.forEach(it => {
       const pr = prop.precos[it.id];
       D.vincularProduto(it, 'cotação ' + cot.numero);
-      if (pr && pr.marca) D.addMarca(it.produtoId, pr.marca);
+      if (pr && pr.marca && podeCadastrar()) D.addMarca(it.produtoId, pr.marca);
     });
     if (cot.status === 'aberta' && cot.propostas.length) cot.status = 'em_analise';
     D.autoSelecionar(cot, true);
@@ -287,7 +384,7 @@
       const ls = porProp[pid];
       const ped = {
         numero: S.nextNumber('PC'), data: U.today(), cotacaoId: cot.id, fornecedorId: prop.fornecedorId,
-        compradorId: cot.compradorId, status: 'emitido', condPagamento: prop.condPagamento || '',
+        compradorId: cot.compradorId, status: 'emitido', criadoPorNome: root.Auth && root.Auth.user ? root.Auth.user.nome : '', condPagamento: prop.condPagamento || '',
         prazoEntregaDias: prop.prazoEntregaDias, previsaoEntrega: U.addDays(U.today(), Number(prop.prazoEntregaDias) || 0),
         freteTipo: prop.freteTipo || '', frete: Number(prop.frete) || 0, descontoPct: Number(prop.descontoPct) || 0,
         localEntrega: cfg.localEntrega || '', obs: '',
@@ -295,16 +392,19 @@
           id: U.uid(), cotItemId: l.item.id, produtoId: l.item.produtoId, descricao: l.item.descricao,
           qtd: l.item.qtd, unidade: l.item.unidade, marca: l.sel.marca || l.item.marca || '',
           unit: l.sel.unit, unitLiquido: l.sel.efetivo, total: l.sel.total,
-          destino: l.item.destino, solicitacaoId: l.item.solicitacaoId, centroCustoId: l.item.centroCustoId, recebido: 0
+          destino: l.item.destino, aplicacao: l.item.aplicacao || '', equipamentoId: l.item.equipamentoId || '', categoriaDespesaId: l.item.categoriaDespesaId || '', solicitacaoId: l.item.solicitacaoId, centroCustoId: l.item.centroCustoId, recebido: 0
         })),
         recebimentos: []
       };
       ped.subtotal = U.sum(ped.itens, i => i.total);
       ped.total = ped.subtotal + ped.frete;
+      // alçada: pedidos acima do limite precisam de aprovação antes de seguir ao fornecedor
+      ped.nivelNecessario = root.R.nivelNecessario(ped.total, S.db.alcadas);
+      if (ped.nivelNecessario !== null) ped.status = 'aguardando_aprovacao';
       S.upsert('pedidos', ped, true);
       criados.push(ped);
       // histórico de preços por produto
-      ped.itens.forEach(i => {
+      if (podeCadastrar()) ped.itens.forEach(i => {
         const p = S.find('produtos', i.produtoId);
         if (!p) return;
         p.historicoPrecos = p.historicoPrecos || [];
@@ -313,7 +413,7 @@
       });
     });
     // registra preços ofertados (não vencedores) como referência de mercado
-    cot.propostas.forEach(p => {
+    if (podeCadastrar()) cot.propostas.forEach(p => {
       cot.itens.forEach(it => {
         const pr = p.precos[it.id];
         const prod = S.find('produtos', it.produtoId);
@@ -342,6 +442,7 @@
 
   D.receber = function (ped, qtds, nf, data) {
     const rec = { id: U.uid(), data: data || U.today(), nf: nf || '', itens: {} };
+    const entregaPorSol = {};
     ped.itens.forEach(i => {
       const q = Number(qtds[i.id]) || 0;
       if (q <= 0) return;
@@ -354,12 +455,15 @@
         centroCustoId: i.centroCustoId, obs: destinoEstoque ? '' : 'Aplicação direta'
       }, true);
       if (!destinoEstoque) {
-        // aplicação direta: entra e sai no mesmo ato, para rastrear o consumo
+        // aplicação direta: entra e sai no mesmo ato; o custo vai para o equipamento
+        const prod = S.find('produtos', i.produtoId);
         S.upsert('movimentos', {
           data: rec.data, produtoId: i.produtoId, tipo: 'saida', qtd: q, custoUnit: i.unitLiquido,
-          doc: ped.numero, origem: 'Aplicação direta', centroCustoId: i.centroCustoId,
-          solicitacaoId: i.solicitacaoId, obs: ''
+          doc: ped.numero + (nf ? ' / NF ' + nf : ''), origem: 'Aplicação direta (compra)', centroCustoId: i.centroCustoId,
+          equipamentoId: i.equipamentoId || '', categoriaDespesaId: i.categoriaDespesaId || '', fornecedorId: ped.fornecedorId, solicitacaoId: i.solicitacaoId,
+          categoria: prod ? prod.categoria || '' : '', descricao: i.descricao, obs: ''
         }, true);
+        (entregaPorSol[i.solicitacaoId] = entregaPorSol[i.solicitacaoId] || []).push({ produtoId: i.produtoId, descricao: i.descricao, qtd: q, unidade: i.unidade, custoUnit: i.unitLiquido, total: q * i.unitLiquido });
       }
     });
     ped.recebimentos.push(rec);
@@ -367,13 +471,19 @@
     ped.status = completo ? 'recebido' : 'recebido_parcial';
     // solicitação atendida quando todos os pedidos que a envolvem foram recebidos
     const solIds = new Set(ped.itens.map(i => i.solicitacaoId));
-    solIds.forEach(sid => {
+    // material de aplicação direta é entregue ao solicitante, que confirma o recebimento no portal
+    Object.keys(entregaPorSol).forEach(sid => {
       const sol = S.find('solicitacoes', sid);
       if (!sol) return;
-      const peds = S.all('pedidos').filter(p => p.status !== 'cancelado' && p.itens.some(i => i.solicitacaoId === sid));
-      const tudo = peds.every(p => p.itens.filter(i => i.solicitacaoId === sid).every(i => (Number(i.recebido) || 0) >= Number(i.qtd) - 1e-9));
-      if (tudo) { sol.status = 'atendida'; sol.historico.push({ data: U.nowIso(), evento: 'Material recebido — solicitação atendida' }); }
+      const itensE = entregaPorSol[sid];
+      S.upsert('entregas', {
+        numero: S.nextNumber('ENT'), data: rec.data, origem: 'compra', pedidoId: ped.id, pedidoNumero: ped.numero, nf: nf || '',
+        status: 'aguardando_aceite', solicitacaoId: sol.id, solicitacaoNumero: sol.numero, solicitanteId: sol.solicitanteId,
+        solicitanteUserId: sol.criadoPor || '', centroCustoId: sol.centroCustoId, equipamentoId: sol.equipamentoId || '', categoriaDespesaId: sol.categoriaDespesaId || '',
+        itens: itensE, total: U.sum(itensE, x => x.total), entreguePor: root.Auth && root.Auth.user ? root.Auth.user.nome : ''
+      }, true);
     });
+    solIds.forEach(sid => D.atualizarStatusSolicitacao(sid));
     S.log('Recebimento ' + ped.numero + (nf ? ' NF ' + nf : ''));
     S.save();
   };
@@ -402,7 +512,8 @@
     sol.aplicacao = 'Reposição de estoque mínimo';
     sol.itens = baixos.map(p => ({
       id: U.uid(), produtoId: p.id, descricao: p.descricao, unidade: p.unidade,
-      qtd: Math.max(1, (Number(p.estoqueMax) || Number(p.estoqueMin) * 2) - D.saldo(p.id)), marca: (p.marcas || [])[0] || '', obs: ''
+      qtd: Math.max(1, (Number(p.estoqueMax) || Number(p.estoqueMin) * 2) - D.saldo(p.id)), marca: (p.marcas || [])[0] || '', obs: '',
+      destino: 'estoque', categoria: p.categoria || ''
     }));
     return D.salvarSolicitacao(sol);
   };
@@ -426,6 +537,84 @@
       S.all('solicitacoes').forEach(s => { if (s.centroCustoId === id) u.push(s.numero); });
     }
     return u;
+  };
+
+  /* Situação da solicitação conforme pedidos recebidos e aceites */
+  D.atualizarStatusSolicitacao = function (sid) {
+    const sol = S.find('solicitacoes', sid);
+    if (!sol || sol.status === 'cancelada') return;
+    if (['pedido', 'aguardando_aceite', 'atendida'].indexOf(sol.status) < 0) return;
+    const peds = S.all('pedidos').filter(p => ['cancelado', 'reprovado'].indexOf(p.status) < 0 && p.itens.some(i => i.solicitacaoId === sid));
+    const recebido = peds.every(p => p.itens.filter(i => i.solicitacaoId === sid).every(i => (Number(i.recebido) || 0) >= Number(i.qtd) - 1e-9));
+    if (!recebido) return;
+    const ents = S.all('entregas').filter(e => e.solicitacaoId === sid);
+    const pendente = ents.some(e => e.status === 'aguardando_aceite');
+    const novo = pendente ? 'aguardando_aceite' : 'atendida';
+    if (sol.status !== novo) {
+      sol.status = novo;
+      sol.historico.push({ data: U.nowIso(), evento: novo === 'atendida' ? 'Material recebido — solicitação atendida' : 'Material entregue — aguardando aceite do solicitante' });
+    }
+  };
+
+  D.podeAceitarEntrega = function (ent) {
+    const A = root.Auth, u = A.user;
+    if (ent.status !== 'aguardando_aceite') return false;
+    if (A.perm.admin) return true;
+    return ent.solicitanteUserId === u.id || (!!u.solicitante_id && ent.solicitanteId === u.solicitante_id);
+  };
+
+  D.aceitarEntrega = function (ent, aceito, obs) {
+    if (!D.podeAceitarEntrega(ent)) throw new Error('Somente o solicitante pode confirmar este recebimento.');
+    const u = root.Auth.user;
+    ent.status = aceito ? 'aceita' : 'recusada';
+    ent.aceite = { resultado: ent.status, por: u.id, porNome: u.nome, em: U.nowIso(), obs: obs || '' };
+    const sol = S.find('solicitacoes', ent.solicitacaoId);
+    if (sol) {
+      sol.historico.push({ data: U.nowIso(), evento: (aceito ? 'Recebimento confirmado' : 'Recebimento recusado') + ' por ' + u.nome + ' (' + ent.numero + ')' + (obs ? ': ' + obs : '') });
+      D.atualizarStatusSolicitacao(sol.id);
+    }
+    S.log('Entrega ' + ent.numero + (aceito ? ' aceita' : ' recusada') + ' por ' + u.nome);
+    S.save();
+  };
+
+  /* ---------- Custos por equipamento ---------- */
+  D.custoEquipamento = function (eqId) {
+    return U.sum(S.all('movimentos').filter(m => m.tipo === 'saida' && m.equipamentoId === eqId), m => (Number(m.qtd) || 0) * (Number(m.custoUnit) || 0));
+  };
+
+  D.custoCategoriaDespesa = function (catId) {
+    return U.sum(S.all('movimentos').filter(m => m.tipo === 'saida' && m.categoriaDespesaId === catId), m => (Number(m.qtd) || 0) * (Number(m.custoUnit) || 0));
+  };
+  D.categoriaDespesa = id => { const c = S.find('categoriasDespesa', id); return c ? c.descricao : '—'; };
+  /* Para onde vai o custo de um item de aplicação direta */
+  D.apropriacao = o => (o.equipamentoId ? 'Equipamento ' + D.equipamento(o.equipamentoId) : o.categoriaDespesaId ? 'Despesa: ' + D.categoriaDespesa(o.categoriaDespesaId) : 'Não apropriado');
+
+  /* ---------- Aprovação por alçada ---------- */
+  D.nivelPedido = ped => (ped.nivelNecessario === undefined ? root.R.nivelNecessario(ped.total, S.db.alcadas) : ped.nivelNecessario);
+
+  D.podeAprovar = function (ped) {
+    return ped.status === 'aguardando_aprovacao' && !root.R.ehAutorDoPedido(ped, root.Auth.user && root.Auth.user.id) &&
+      root.R.podeAprovar(root.Auth.perm, D.nivelPedido(ped));
+  };
+
+  D.aprovarPedido = function (ped, aprovado, motivo) {
+    if (root.R.ehAutorDoPedido(ped, root.Auth.user.id)) throw new Error('Quem gerou o pedido não pode aprová-lo. Outro autorizador deve fazer a aprovação.');
+    if (!D.podeAprovar(ped)) throw new Error('Você não tem alçada para aprovar este pedido (exige níveis 1 a ' + D.nivelPedido(ped) + ').');
+    const u = root.Auth.user;
+    ped.aprovacao = { resultado: aprovado ? 'aprovado' : 'reprovado', por: u.id, porNome: u.nome, em: U.nowIso(), nivel: D.nivelPedido(ped), motivo: motivo || '' };
+    if (aprovado) {
+      ped.status = 'emitido';
+      S.log('Pedido ' + ped.numero + ' aprovado por ' + u.nome);
+    } else {
+      ped.status = 'reprovado';
+      // as solicitações voltam para nova cotação
+      new Set(ped.itens.map(i => i.solicitacaoId)).forEach(sid => {
+        const s = S.find('solicitacoes', sid);
+        if (s && s.status === 'pedido') { s.status = 'aberta'; s.historico.push({ data: U.nowIso(), evento: 'Pedido ' + ped.numero + ' reprovado: ' + (motivo || '') }); }
+      });
+      S.log('Pedido ' + ped.numero + ' reprovado por ' + u.nome);
+    }
+    S.save();
   };
 
   root.D = D;
