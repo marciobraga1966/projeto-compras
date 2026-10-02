@@ -144,6 +144,13 @@ begin
     new.dados := old.dados;
   end if;
 
+  -- segregação de funções: quem gerou o pedido não pode aprová-lo (vale para todos)
+  if new.colecao = 'pedidos' and tg_op = 'UPDATE' and old.dados ->> 'status' = 'aguardando_aprovacao'
+     and new.dados ->> 'status' not in ('aguardando_aprovacao', 'cancelado')
+     and old.dados ->> 'criadoPor' = auth.uid()::text then
+    raise exception 'Quem gerou o pedido não pode aprová-lo';
+  end if;
+
   -- alçada: pedido só sai de "aguardando aprovação" com autorizador de nível suficiente
   if new.colecao = 'pedidos' and not public.eh_admin() then
     status_novo := new.dados ->> 'status';

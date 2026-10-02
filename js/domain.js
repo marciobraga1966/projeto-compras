@@ -593,10 +593,12 @@
   D.nivelPedido = ped => (ped.nivelNecessario === undefined ? root.R.nivelNecessario(ped.total, S.db.alcadas) : ped.nivelNecessario);
 
   D.podeAprovar = function (ped) {
-    return ped.status === 'aguardando_aprovacao' && root.R.podeAprovar(root.Auth.perm, D.nivelPedido(ped));
+    return ped.status === 'aguardando_aprovacao' && !root.R.ehAutorDoPedido(ped, root.Auth.user && root.Auth.user.id) &&
+      root.R.podeAprovar(root.Auth.perm, D.nivelPedido(ped));
   };
 
   D.aprovarPedido = function (ped, aprovado, motivo) {
+    if (root.R.ehAutorDoPedido(ped, root.Auth.user.id)) throw new Error('Quem gerou o pedido não pode aprová-lo. Outro autorizador deve fazer a aprovação.');
     if (!D.podeAprovar(ped)) throw new Error('Você não tem alçada para aprovar este pedido (exige níveis 1 a ' + D.nivelPedido(ped) + ').');
     const u = root.Auth.user;
     ped.aprovacao = { resultado: aprovado ? 'aprovado' : 'reprovado', por: u.id, porNome: u.nome, em: U.nowIso(), nivel: D.nivelPedido(ped), motivo: motivo || '' };

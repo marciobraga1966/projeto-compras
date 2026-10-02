@@ -65,7 +65,7 @@
     if (/invalid login|invalid_grant|credentials/i.test(m)) return 'E-mail ou senha incorretos.';
     if (/row-level security|permission denied|42501/i.test(m) || (j && j.code === '42501')) return 'Sem permissão para esta operação.';
     if (/registros.* does not exist|Could not find the table/i.test(m)) return 'O banco ainda não foi preparado: rode o script supabase/schema.sql no SQL Editor do Supabase.';
-    if (/Alçada/i.test(m)) return m;
+    if (/Alçada|aprová-lo/i.test(m)) return m;
     return m;
   }
 
@@ -266,7 +266,7 @@
       if (alterou && !(opts && opts.silencioso)) refreshScreen();
     } catch (err) {
       erro = err;
-      if (err.status === 403 || err.code === '42501' || /Alçada|permissão/i.test(err.message)) {
+      if (err.status === 403 || err.code === '42501' || /Alçada|permissão|aprová-lo/i.test(err.message)) {
         // o banco recusou: descarta a alteração local e volta ao que está no banco
         root.UI.toast('O banco recusou a gravação: ' + err.message + ' A tela foi atualizada com os dados do banco.', 'bad');
         await Cloud.recarregarDoBanco().catch(() => {});

@@ -62,8 +62,9 @@
     if (ped.status === 'aguardando_aprovacao') {
       const pode = D.podeAprovar(ped);
       h += '<div class="card aprov"><div class="hd"><h2>Aprovação por alçada</h2><span class="pill warn">Exige autorizador com níveis 1 a ' + nivel + '</span></div><div class="bd stack">' +
-        '<p style="margin:0">Valor do pedido: <b>' + U.money(ped.total) + '</b>. ' + R.descreverAlcada(S.db.alcadas).map(a => 'Nível ' + a.nivel + ': ' + a.faixa).join(' · ') + '</p>' +
+        '<p style="margin:0">Valor do pedido: <b>' + U.money(ped.total) + '</b>' + (ped.criadoPorNome ? ' · gerado por <b>' + U.esc(ped.criadoPorNome) + '</b>' : '') + '. ' + R.descreverAlcada(S.db.alcadas).map(a => 'Nível ' + a.nivel + ': ' + a.faixa).join(' · ') + '</p>' +
         (pode ? '<div class="f"><label for="ap-mot">Observação da aprovação / motivo da reprovação</label><input id="ap-mot"></div><div class="row"><button class="btn pri" id="ap-ok">' + UI.icon('check') + 'Aprovar pedido</button><button class="btn danger" id="ap-no">' + UI.icon('x') + 'Reprovar</button></div>'
+          : R.ehAutorDoPedido(ped, Auth.user.id) ? '<div class="note warn">Você gerou este pedido e por isso não pode aprová-lo. A aprovação deve ser feita por outro autorizador com os níveis 1 a ' + nivel + '.</div>'
           : '<div class="note warn">Você não tem alçada para aprovar este pedido. Ele aguarda um autorizador com os níveis 1 a ' + nivel + '. O pedido não pode ser enviado ao fornecedor antes da aprovação.</div>') +
         '</div></div>';
     } else if (ped.aprovacao) {

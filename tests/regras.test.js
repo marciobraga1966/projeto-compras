@@ -25,6 +25,12 @@ test('autorizador precisa ter todos os níveis até o exigido', () => {
   assert.ok(R.podeAprovar(p('comprador', []), null));
 });
 
+test('quem gerou o pedido não pode aprová-lo', () => {
+  assert.ok(R.ehAutorDoPedido({ criadoPor: 'u1' }, 'u1'));
+  assert.ok(!R.ehAutorDoPedido({ criadoPor: 'u1' }, 'u2'));
+  assert.ok(!R.ehAutorDoPedido({}, 'u1'));
+});
+
 test('permissões por categoria de usuário', () => {
   const b = R.permissoes({ categoria: 'basico' });
   assert.deepStrictEqual([b.basico, b.processoCompras, b.verTotalizadores, b.editarProdutosFornecedores], [true, false, false, false]);

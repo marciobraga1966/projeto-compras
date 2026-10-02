@@ -56,6 +56,11 @@
     return true;
   };
 
+  /* Segregação de funções: quem gerou o pedido não pode aprová-lo */
+  R.ehAutorDoPedido = function (ped, userId) {
+    return !!(ped && userId && ped.criadoPor && ped.criadoPor === userId);
+  };
+
   R.descreverAlcada = function (alcadas) {
     const lista = R.ordenarAlcadas(alcadas);
     let anterior = 0;
