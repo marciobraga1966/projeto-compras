@@ -25,6 +25,16 @@ test('autorizador precisa ter todos os níveis até o exigido', () => {
   assert.ok(R.podeAprovar(p('comprador', []), null));
 });
 
+test('coleções que cada categoria pode gravar no banco', () => {
+  const b = R.permissoes({ categoria: 'basico' }), c = R.permissoes({ categoria: 'comprador' }), ca = R.permissoes({ categoria: 'comprador', pode_cadastros: true });
+  assert.ok(!R.podeGravarColecao(c, '_sistema'));
+  assert.ok(!R.podeGravarColecao(b, '_sistema'));
+  assert.ok(R.podeGravarColecao(R.permissoes({ categoria: 'administrador' }), '_sistema'));
+  assert.ok(!R.podeGravarColecao(c, 'categoriasDespesa'));
+  assert.ok(R.podeGravarColecao(ca, 'categoriasDespesa'));
+  assert.ok(R.podeGravarColecao(b, 'entregas') && !R.podeGravarColecao(b, 'produtos'));
+});
+
 test('quem gerou o pedido não pode aprová-lo', () => {
   assert.ok(R.ehAutorDoPedido({ criadoPor: 'u1' }, 'u1'));
   assert.ok(!R.ehAutorDoPedido({ criadoPor: 'u1' }, 'u2'));

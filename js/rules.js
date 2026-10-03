@@ -56,6 +56,16 @@
     return true;
   };
 
+  /* Quais coleções o usuário pode gravar no banco (espelha as regras do supabase/schema.sql) */
+  R.podeGravarColecao = function (perm, colecao) {
+    if (perm.admin) return true;
+    if (perm.comprador) {
+      if (['solicitacoes', 'cotacoes', 'pedidos', 'movimentos', 'entregas'].indexOf(colecao) > -1) return true;
+      return ['produtos', 'fornecedores', 'equipamentos', 'categoriasDespesa'].indexOf(colecao) > -1 && perm.editarProdutosFornecedores;
+    }
+    return colecao === 'solicitacoes' || colecao === 'entregas';
+  };
+
   /* Segregação de funções: quem gerou o pedido não pode aprová-lo */
   R.ehAutorDoPedido = function (ped, userId) {
     return !!(ped && userId && ped.criadoPor && ped.criadoPor === userId);
