@@ -75,9 +75,9 @@
       ['custo', 'Custo acumulado', e => { if (!Auth.perm.verTotalizadores) return '—'; const t = D.custoEquipamento(e.id); return t ? '<a href="#/custos" data-eq="' + e.id + '">' + U.money(t) + '</a>' : '—'; }, 'n']]
   };
   DEF.categoriasDespesa = {
-    col: 'categoriasDespesa', titulo: 'Categorias de despesa (uso e consumo coletivo)', um: 'categoria', prefixo: 'DSP',
+    col: 'categoriasDespesa', titulo: 'Categorias de despesa (uso e consumo coletivo)', um: 'categoria', fem: true, prefixo: 'DSP',
     campos: [
-      ['codigo', 'Código', 's2'], ['descricao', 'Categoria', 's6', true], ['grupo', 'Grupo', 's4', false, 'grupodesp'],
+      ['codigo', 'Código', 's2'], ['descricao', 'Nome da categoria', 's6', true], ['grupo', 'Grupo', 's4', false, 'grupodesp'],
       ['centros', 'Centros de custo que usam esta categoria (nenhum marcado = todos)', 's12', false, 'ccmulti'],
       ['obs', 'O que entra nesta categoria', 's12', false, 'textarea']
     ],
@@ -137,7 +137,7 @@
     UI.setHeader(d.titulo, 'Cadastros',
       ((key === 'fornecedores' || key === 'produtos' || key === 'equipamentos') && podeEditar(key) ? '<button class="btn" id="imp">' + UI.icon('upload') + 'Importar planilha</button>' : '') +
       '<button class="btn" id="exp">' + UI.icon('download') + 'Exportar</button>' +
-      (podeEditar(key) ? '<button class="btn pri" id="novo">' + UI.icon('plus') + 'Novo ' + d.um + '</button>' : ''));
+      (podeEditar(key) ? '<button class="btn pri" id="novo">' + UI.icon('plus') + (d.fem ? 'Nova ' : 'Novo ') + d.um + '</button>' : ''));
     const v = UI.render('<div class="card"><div class="hd"><div class="toolbar"><input type="search" id="q" placeholder="Buscar" value="' + U.esc(busca[key] || '') + '"></div><div class="acts muted small" id="cnt"></div></div><div class="bd flush"><div class="tbl-wrap" id="tb"></div></div></div>' +
       (key === 'produtos' ? '<p class="small muted" style="margin:0">Produtos digitados em solicitações ou recebidos em propostas entram aqui automaticamente, com marcas ofertadas e histórico de preços.</p>' : '') +
       (key === 'fornecedores' ? '<p class="small muted" style="margin:0">Fornecedores identificados em propostas importadas (CNPJ, e-mail, telefone) são cadastrados automaticamente.</p>' : ''));
@@ -149,7 +149,7 @@
       UI.$('#tb').innerHTML = list.length ? '<table class="tbl"><thead><tr>' + d.colunas.map(c => '<th class="' + (c[3] || '') + '">' + c[1] + '</th>').join('') + '<th></th></tr></thead><tbody>' +
         list.map(x => '<tr class="click" data-id="' + x.id + '">' + d.colunas.map(c => '<td class="' + (c[3] || '') + '">' + (c[2] ? c[2](x) : U.esc(x[c[0]] || '')) + '</td>').join('') +
           '<td class="act">' + (!podeEditar(key) ? '' : '<button class="btn icon ghost" data-ed="' + x.id + '" title="Editar" aria-label="Editar">' + UI.icon('edit') + '</button><button class="btn icon ghost danger" data-rm="' + x.id + '" title="Excluir" aria-label="Excluir">' + UI.icon('trash') + '</button>') + '</td></tr>').join('') +
-        '</tbody></table>' : UI.empty('Nenhum registro', 'Cadastre o primeiro ' + d.um + '.');
+        '</tbody></table>' : UI.empty('Nenhum registro', 'Cadastre ' + (d.fem ? 'a primeira ' : 'o primeiro ') + d.um + '.');
     }
     draw();
     UI.$('#q').oninput = U.debounce(e => { busca[key] = e.target.value; draw(); }, 200);
@@ -242,7 +242,7 @@
       return '<div class="f ' + span + '"><label for="' + id + '">' + label + (req ? ' *' : '') + '</label>' + inp + '</div>';
     };
     UI.modal({
-      title: (obj ? 'Editar ' : 'Novo ') + d.um, size: key === 'fornecedores' || key === 'produtos' ? 'wide' : '',
+      title: (obj ? 'Editar ' : d.fem ? 'Nova ' : 'Novo ') + d.um, size: key === 'fornecedores' || key === 'produtos' ? 'wide' : '',
       body: '<div class="form">' + d.campos.map(field).join('') + '</div>' +
         (obj && (key === 'fornecedores' || key === 'produtos' || key === 'equipamentos' || key === 'categoriasDespesa') ? '<label class="row small"><input type="checkbox" id="cf-ativo"' + (x.ativo !== false ? ' checked' : '') + '> Ativo</label>' : ''),
       buttons: [{ label: 'Cancelar' }, { label: 'Salvar', cls: 'pri', icon: 'check', action: m => {

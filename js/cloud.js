@@ -173,12 +173,14 @@
           delete sync.hashes[k];
           return;
         }
-        const h = hash(JSON.stringify(row.dados));
+        // configurações: compara já mescladas com os padrões locais (como ficam após aplicar)
+        const h = row.colecao === SYS ? hash(JSON.stringify(Object.assign(JSON.parse(JSON.stringify(S.db.config)), row.dados))) : hash(JSON.stringify(row.dados));
         const localSujo = loc && sync.hashes[k] !== undefined && sync.hashes[k] !== hash(JSON.stringify(loc.dados));
         if (sync.hashes[k] === h && loc) return;
         if (localSujo && !tudo) return; // alteração local ainda não enviada
         applyLocal(row.colecao, row.id, row.dados);
-        sync.hashes[k] = h;
+        // configurações são mescladas com os valores padrão: o hash precisa ser o da versão local
+        sync.hashes[k] = row.colecao === SYS ? hash(JSON.stringify(S.db.config)) : h;
         alterou = true;
       });
       if (rows.length < 1000) break;
@@ -202,14 +204,33 @@
     if (erro) throw erro;
   }
 
+  const podeGravar = col => !root.Auth || !root.Auth.user || root.R.podeGravarColecao(root.Auth.perm, col);
+
   async function pushOnce() {
     const locais = localRecords();
     const envio = [], exclusoes = [], novos = {};
+    let descartar = 0;
     Object.keys(locais).forEach(k => {
       const h = hash(JSON.stringify(locais[k].dados));
-      if (sync.hashes[k] !== h) { envio.push({ colecao: locais[k].colecao, id: locais[k].id, dados: locais[k].dados, excluido: false }); novos[k] = h; }
+      if (sync.hashes[k] === h) return;
+      if (!podeGravar(locais[k].colecao)) {
+        // alteração que este usuário não pode gravar: não envia; volta ao que está no banco
+        if (sync.hashes[k] === undefined) removeLocal(locais[k].colecao, locais[k].id); else delete sync.hashes[k];
+        descartar++;
+        return;
+      }
+      envio.push({ colecao: locais[k].colecao, id: locais[k].id, dados: locais[k].dados, excluido: false }); novos[k] = h;
     });
-    Object.keys(sync.hashes).forEach(k => { if (!locais[k]) exclusoes.push(k); });
+    Object.keys(sync.hashes).forEach(k => {
+      if (locais[k]) return;
+      if (podeGravar(k.split('/')[0])) exclusoes.push(k);
+      else { delete sync.hashes[k]; descartar++; } // exclusão sem permissão: o registro volta do banco
+    });
+    if (descartar) {
+      console.warn(descartar + ' alteração(ões) sem permissão descartada(s); recarregando do banco');
+      if (root.UI) root.UI.toast('Seu usuário não tem permissão para gravar ' + descartar + ' alteração(ões); elas foram desfeitas e a tela voltou aos dados do banco.', 'bad');
+      await pullOnce(true);
+    }
     // registros novos: inclusão em lote; existentes: atualização (as regras do banco são diferentes para cada caso)
     const novosReg = envio.filter(r => sync.hashes[r.colecao + '/' + r.id] === undefined);
     const existentes = envio.filter(r => sync.hashes[r.colecao + '/' + r.id] !== undefined);
